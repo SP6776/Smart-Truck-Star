@@ -76,6 +76,7 @@ const Pencil = (p) => <IconBase {...p}>✏️</IconBase>;
 const Trash2 = (p) => <IconBase {...p}>🗑️</IconBase>;
 const XIcon = (p) => <IconBase {...p}>✕</IconBase>;
 const LinkIcon = (p) => <IconBase {...p}>🔗</IconBase>;
+const Trophy = (p) => <IconBase {...p}>🏆</IconBase>;
 
 /* ============================= DATA MODEL ============================= */
 
@@ -88,19 +89,15 @@ const STAR_TYPES = {
 };
 const STAR_ORDER = ["ppe", "safety", "activity", "quiz", "special"];
 
-const LEVELS = [
-  { min: 0,   max: 19,      name: "นักขับมือใหม่" },
-  { min: 20,  max: 49,      name: "นักขับใส่ใจปลอดภัย" },
-  { min: 50,  max: 99,      name: "นักขับมืออาชีพ" },
-  { min: 100, max: 149,     name: "แชมป์ความปลอดภัย" },
-  { min: 150, max: Infinity, name: "สุดยอดนักขับ SMART TRUCK" },
-];
+const MAX_RANK_STARS = 500;
 
-const REWARDS = [
-  { stars: 50,  name: "รางวัลทองแดง" },
-  { stars: 100, name: "รางวัลเงิน" },
-  { stars: 150, name: "รางวัลทอง" },
-  { stars: 200, name: "รางวัลสูงสุด SMART TRUCK MASTER" },
+const LEVELS = [
+  { min: 0,   max: 99,  name: "นักขับมือใหม่" },
+  { min: 100, max: 199, name: "นักขับใส่ใจปลอดภัย" },
+  { min: 200, max: 299, name: "นักขับมืออาชีพ" },
+  { min: 300, max: 399, name: "แชมป์ความปลอดภัย" },
+  { min: 400, max: 499, name: "สุดยอดนักขับ SMART TRUCK" },
+  { min: 500, max: Infinity, name: "ตำนาน SMART TRUCK STAR" },
 ];
 
 const REASONS = {
@@ -112,6 +109,9 @@ const REASONS = {
 };
 
 const AVATAR_POOL = ["👷🏽", "👷🏽", "👷🏾", "👷🏻", "👷🏻", "👷🏽", "👷🏻", "👷🏾", "👷🏾", "👷🏻", "👷🏼", "👷🏼"];
+
+/* 🔒 รหัส PIN สำหรับเข้าโซนเจ้าหน้าที่ (แก้ตัวเลขนี้เป็นรหัสของคุณเองได้เลย) */
+const STAFF_PIN = "6776";
 
 const DRIVER_SEED = [
   { id: "ST-001", name: "สมชาย ใจดี",     plate: "70-1234", unit: "หน่วยขนส่งเหล็กเส้น",  avatar: "👷🏽", total: 125 },
@@ -217,9 +217,6 @@ function getNextLevel(total) {
   const idx = LEVELS.findIndex((l) => total >= l.min && total <= l.max);
   return LEVELS[idx + 1] || null;
 }
-function getNextReward(total) {
-  return REWARDS.find((r) => total < r.stars) || null;
-}
 
 /* ============================= ระบบเก็บข้อมูลกลาง: Firebase Realtime Database ============================= */
 /* ⚠️ ต้องตั้งค่าก่อนใช้งาน: แก้ไขค่าด้านล่างให้เป็นของโปรเจกต์ Firebase ของคุณเอง
@@ -227,14 +224,15 @@ function getNextReward(total) {
    อย่าลืมเปิด Realtime Database และตั้ง Rules เป็น {"rules": {".read": true, ".write": true}} สำหรับการใช้งานแบบไม่ต้องล็อกอิน (เหมาะกับกิจกรรมภายในระยะสั้น) */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB3KQs5u9nnFrJD7Cs49vVYBBQQVG7RCpI",
-  authDomain: "driver-star-score.firebaseapp.com",
-  databaseURL: "https://driver-star-score-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "driver-star-score",
-  storageBucket: "driver-star-score.firebasestorage.app",
-  messagingSenderId: "582908802766",
-  appId: "1:582908802766:web:1678af75fb999f081e429f",
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
+
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
@@ -278,7 +276,7 @@ function BottomNav({ view, setView }) {
     { key: "home", label: "หน้าแรก", icon: Home },
     { key: "mystar", label: "ดาวของฉัน", icon: Star },
     { key: "history", label: "ประวัติ", icon: ClipboardList },
-    { key: "reward", label: "รางวัล", icon: Gift },
+    { key: "reward", label: "แรงค์", icon: Trophy },
   ];
   return (
     <div className="fixed bottom-0 left-0 right-0 sts-card-l-raised" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderBottom: "none", maxWidth: 480, margin: "0 auto" }}>
@@ -430,31 +428,47 @@ function History({ logs, driverId, setView }) {
   );
 }
 
-function RewardView({ totals, setView }) {
-  const next = getNextReward(totals.total);
+function RankView({ totals, setView }) {
+  const total = totals.total;
+  const level = getLevel(total);
+  const next = getNextLevel(total);
+  const cappedTotal = Math.min(total, MAX_RANK_STARS);
+  const pct = Math.min(100, (cappedTotal / MAX_RANK_STARS) * 100);
+
   return (
     <div className="pb-24 sts-fadein">
-      <TopBarLight title="🎁 รางวัล SMART TRUCK" onBack={() => setView("home")} />
+      <TopBarLight title="🏆 แรงค์ของฉัน" onBack={() => setView("home")} />
       <div className="p-4">
-        <div className="sts-card-l-raised p-4 text-center mb-4">
-          <div className="text-sm text-gray-500">คุณมี</div>
-          <div className="sts-mono sts-display text-3xl my-1" style={{ color: "#B8860B" }}>{totals.total} ⭐</div>
-          {next ? <div className="text-sm text-gray-500">อีก <span style={{ color: "#20242B" }} className="sts-mono">{next.stars - totals.total}</span> ดาวถึง <span style={{ color: "#B8860B" }}>{next.name}</span></div>
-                : <div className="text-sm" style={{ color: "#B8860B" }}>คุณปลดล็อกรางวัลสูงสุดแล้ว! 🏆</div>}
+        <div className="sts-card-l-raised p-5 text-center mb-4">
+          <div className="text-xs text-gray-500 mb-1">คุณอยู่แรงค์</div>
+          <div className="sts-display text-2xl mb-2" style={{ color: "#B8860B" }}>{level.name}</div>
+          <div className="sts-mono sts-display text-3xl mb-3">{total} <span className="text-lg text-gray-400">/ {MAX_RANK_STARS} ⭐</span></div>
+          <div className="sts-progress-track-l mb-2">
+            <div className="sts-progress-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#F5B700,#EA7C1F)" }} />
+          </div>
+          {next ? (
+            <div className="text-sm text-gray-500">อีก <span style={{ color: "#20242B" }} className="sts-mono">{next.min - total}</span> ดาวถึงแรงค์ <span style={{ color: "#B8860B" }}>{next.name}</span></div>
+          ) : (
+            <div className="text-sm" style={{ color: "#B8860B" }}>🎉 คุณอยู่แรงค์สูงสุดแล้ว!</div>
+          )}
         </div>
+
+        <div className="text-xs text-gray-500 mb-2 px-1">บันไดแรงค์ทั้งหมด</div>
         <div className="space-y-3">
-          {REWARDS.map((r) => {
-            const achieved = totals.total >= r.stars;
+          {LEVELS.map((l) => {
+            const achieved = total >= l.min;
+            const isCurrent = l.name === level.name;
             return (
-              <div key={r.stars} className="sts-card-l p-4 flex items-center justify-between" style={achieved ? { borderColor: "#F5B700" } : {}}>
+              <div key={l.name} className="sts-card-l p-4 flex items-center justify-between" style={isCurrent ? { borderColor: "#F5B700" } : {}}>
                 <div className="flex items-center gap-3">
-                  <Gift size={22} style={{ color: achieved ? "#B8860B" : "#C7C2B5" }} />
+                  <Star size={20} style={{ color: achieved ? "#B8860B" : "#C7C2B5" }} />
                   <div>
-                    <div className="sts-display text-sm">{r.name}</div>
-                    <div className="text-xs text-gray-400 sts-mono">{r.stars} ⭐</div>
+                    <div className="sts-display text-sm">{l.name}</div>
+                    <div className="text-xs text-gray-400 sts-mono">{l.min}{l.max === Infinity ? "+" : ` - ${l.max}`} ⭐</div>
                   </div>
                 </div>
-                {achieved ? <Check size={20} style={{ color: "#2FAE60" }} /> : <span className="text-xs text-gray-400">ยังไม่ถึง</span>}
+                {isCurrent ? <span className="text-xs sts-display" style={{ color: "#B8860B" }}>คุณอยู่ตรงนี้</span>
+                  : achieved ? <Check size={20} style={{ color: "#2FAE60" }} /> : <span className="text-xs text-gray-400">ยังไม่ถึง</span>}
               </div>
             );
           })}
@@ -616,9 +630,55 @@ function ShareLinkBox() {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit }) {
+function DriverPickerDark({ drivers, selectedId, onSelect }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const selected = drivers.find((d) => d.id === selectedId);
+  const query = normalizeText(q);
+  const matches = query.length >= 1
+    ? drivers.filter((d) => normalizeText(d.name).includes(query) || normalizeText(d.id).includes(query)).slice(0, 8)
+    : [];
+
+  if (selected && !open) {
+    return (
+      <div className="sts-card-d w-full px-3 py-2 flex items-center justify-between">
+        <span className="text-sm">{selected.avatar} {selected.name} <span className="text-gray-500 text-xs sts-mono">({selected.id})</span></span>
+        <button onClick={() => { setOpen(true); setQ(""); }} className="text-xs" style={{ color: "#FFC531" }}>เปลี่ยน</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input
+        autoFocus={open}
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="พิมพ์ชื่อคนขับ..."
+        className="sts-card-d w-full px-3 py-2 bg-transparent text-sm"
+      />
+      {query.length >= 1 && (
+        <div className="mt-2 space-y-1 max-h-48 overflow-y-auto sts-scroll">
+          {matches.length === 0 && <div className="text-xs text-gray-500 px-1 py-2">ไม่พบชื่อนี้</div>}
+          {matches.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => { onSelect(d.id); setOpen(false); setQ(""); }}
+              className="sts-btn w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2"
+              style={{ background: "#1E2227" }}
+            >
+              <span>{d.avatar}</span> {d.name} <span className="text-gray-500 text-xs sts-mono">({d.id})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
   const [tab, setTab] = useState("share");
-  const [selectedDriver, setSelectedDriver] = useState(drivers[0]?.id || "");
+  const [selectedDriver, setSelectedDriver] = useState("");
   const [reason, setReason] = useState("");
   const [flash, setFlash] = useState(null);
 
@@ -705,16 +765,31 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit }) {
           <div className="sts-card-d p-4 text-xs text-gray-400 leading-relaxed">
             💡 ทุกคนที่เปิดลิงก์นี้ (คนขับ / หัวหน้างาน / จอ Leaderboard) จะเห็นข้อมูลชุดเดียวกัน แบบไม่ต้องสมัครสมาชิกหรือล็อกอินใดๆ ระบบจะอัปเดตให้อัตโนมัติทุกๆ 2-4 วินาที
           </div>
+          <div className="sts-card-d p-4" style={{ borderColor: "#5A2323" }}>
+            <div className="text-sm sts-display mb-2" style={{ color: "#FF6B6B" }}>⚠️ รีเซ็ตข้อมูลดาวทั้งหมด</div>
+            <div className="text-xs text-gray-400 mb-3">ล้างประวัติดาวทั้งหมดของทุกคนกลับเป็น 0 ใช้เมื่อยังไม่เริ่มกิจกรรมจริง (ข้อมูลคนขับ/รายชื่อจะไม่หายไป ลบเฉพาะดาวที่เคยให้)</div>
+            <button
+              onClick={() => {
+                if (window.confirm("ยืนยันรีเซ็ตดาวของทุกคนกลับเป็น 0? การกระทำนี้ย้อนกลับไม่ได้")) {
+                  if (window.confirm("ยืนยันอีกครั้ง — ต้องการรีเซ็ตข้อมูลดาวทั้งหมดจริงหรือไม่?")) {
+                    onResetStars();
+                  }
+                }
+              }}
+              className="sts-btn w-full py-2 rounded-lg text-sm sts-display"
+              style={{ background: "#5A2323", color: "#FFD9D9" }}
+            >
+              รีเซ็ตดาวทั้งหมดเป็น 0
+            </button>
+          </div>
         </div>
       )}
 
       {tab === "demo" && (
         <div className="p-4 space-y-4 sts-fadein">
           <div className="sts-card-d p-4">
-            <div className="text-xs text-gray-400 mb-2">เลือกคนขับที่จะให้ดาว</div>
-            <select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)} className="sts-card-d w-full px-3 py-2 bg-transparent">
-              {drivers.map((d) => <option key={d.id} value={d.id} style={{ background: "#15181C" }}>{d.avatar} {d.name} ({d.id})</option>)}
-            </select>
+            <div className="text-xs text-gray-400 mb-2">พิมพ์ชื่อคนขับที่จะให้ดาว</div>
+            <DriverPickerDark drivers={drivers} selectedId={selectedDriver} onSelect={setSelectedDriver} />
             <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล (ไม่บังคับ)" className="sts-card-d w-full px-3 py-2 mt-2 bg-transparent text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -923,17 +998,46 @@ function DriverSearch({ drivers, onEnter, onBack }) {
 function LoginView({ drivers, onEnter }) {
   const [showDriverList, setShowDriverList] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pin, setPin] = useState("");
+  const [pinError, setPinError] = useState(false);
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef(null);
+
+  const handleLogoTap = () => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => { tapCountRef.current = 0; }, 2000);
+    if (tapCountRef.current >= 5) {
+      tapCountRef.current = 0;
+      setShowPinPrompt(true);
+      setPin("");
+      setPinError(false);
+    }
+  };
+
+  const submitPin = () => {
+    if (pin === STAFF_PIN) {
+      setShowPinPrompt(false);
+      setShowStaff(true);
+    } else {
+      setPinError(true);
+      setPin("");
+    }
+  };
 
   return (
     <div className="min-h-screen sts-light flex flex-col items-center justify-center p-6 sts-fadein relative">
       <div className="sts-hazard-l absolute top-0 left-0 right-0" />
-      <Truck size={44} style={{ color: "#B8860B" }} className="mb-3" />
-      <div className="sts-display text-3xl text-center" style={{ color: "#20242B" }}>SMART TRUCK STAR</div>
+      <div onClick={handleLogoTap} style={{ cursor: "default" }}>
+        <Truck size={44} style={{ color: "#B8860B" }} className="mb-3" />
+      </div>
+      <div onClick={handleLogoTap} className="sts-display text-3xl text-center" style={{ color: "#20242B", cursor: "default", userSelect: "none" }}>SMART TRUCK STAR</div>
       <div className="text-sm text-gray-500 mb-1">TMT Steel</div>
       <div className="sts-display text-sm mb-6" style={{ color: "#B8860B" }}>ขับปลอดภัย ได้ดาว ได้รางวัล</div>
       <div className="text-[11px] text-gray-400 mb-4 text-center max-w-xs">ข้อมูลดาวสะสมจะอัปเดตให้ทุกเครื่องที่เปิดลิงก์นี้เห็นตรงกันโดยอัตโนมัติ ไม่ต้องสมัครหรือล็อกอิน</div>
 
-      {!showDriverList && !showStaff && (
+      {!showDriverList && !showStaff && !showPinPrompt && (
         <div className="w-full max-w-sm space-y-4">
           <button onClick={() => setShowDriverList(true)} className="sts-btn sts-card-l-raised w-full p-5 flex items-center gap-3">
             <Truck size={26} style={{ color: "#B8860B" }} />
@@ -943,12 +1047,26 @@ function LoginView({ drivers, onEnter }) {
             </div>
             <ChevronRight size={18} className="ml-auto text-gray-400" />
           </button>
+        </div>
+      )}
 
-          <div className="text-center pt-2">
-            <button onClick={() => setShowStaff(true)} className="text-xs text-gray-400 flex items-center gap-1 mx-auto">
-              <Lock size={12} /> สำหรับเจ้าหน้าที่ / ผู้ดูแลระบบ
-            </button>
-          </div>
+      {showPinPrompt && (
+        <div className="w-full max-w-sm sts-card-d-raised p-5" style={{ background: "#15181C", borderColor: "#2A2F35" }}>
+          <div className="text-sm sts-display mb-3 text-center" style={{ color: "#F2F3F4" }}>🔒 กรอกรหัสเจ้าหน้าที่</div>
+          <input
+            autoFocus
+            type="password"
+            inputMode="numeric"
+            value={pin}
+            onChange={(e) => { setPin(e.target.value); setPinError(false); }}
+            onKeyDown={(e) => { if (e.key === "Enter") submitPin(); }}
+            placeholder="••••"
+            className="sts-card-d w-full px-3 py-3 text-center text-lg bg-transparent mb-2"
+            style={{ color: "#F2F3F4", letterSpacing: "0.3em" }}
+          />
+          {pinError && <div className="text-xs text-center mb-2" style={{ color: "#FF6B6B" }}>รหัสไม่ถูกต้อง ลองใหม่อีกครั้ง</div>}
+          <button onClick={submitPin} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>เข้าสู่ระบบ</button>
+          <button onClick={() => setShowPinPrompt(false)} className="text-xs text-gray-500 mt-3 w-full text-center">← กลับ</button>
         </div>
       )}
 
@@ -1085,6 +1203,10 @@ function App() {
     if (db) db.ref("logs").push(entry);
   }
 
+  function resetAllStars() {
+    if (db) db.ref("logs").set({});
+  }
+
   const totalsByDriver = useMemo(() => {
     const map = {};
     drivers.forEach((d) => {
@@ -1120,7 +1242,7 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={exitToLogin} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} />;
 
@@ -1134,7 +1256,7 @@ function App() {
       {view === "home" && <DriverHome driver={driver} totals={totals} todayTotal={todayTotal} setView={setView} exit={exitToLogin} />}
       {view === "mystar" && <MyStar totals={totals} setView={setView} />}
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} />}
-      {view === "reward" && <RewardView totals={totals} setView={setView} />}
+      {view === "reward" && <RankView totals={totals} setView={setView} />}
       <BottomNav view={view} setView={setView} />
     </div>
   );
