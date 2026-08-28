@@ -224,13 +224,13 @@ function getNextLevel(total) {
    อย่าลืมเปิด Realtime Database และตั้ง Rules เป็น {"rules": {".read": true, ".write": true}} สำหรับการใช้งานแบบไม่ต้องล็อกอิน (เหมาะกับกิจกรรมภายในระยะสั้น) */
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID",
+  apiKey: "AIzaSyB3KQs5u9nnFrJD7Cs49vVYBBQQVG7RCpI",
+  authDomain: "driver-star-score.firebaseapp.com",
+  databaseURL: "https://driver-star-score-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "driver-star-score",
+  storageBucket: "driver-star-score.firebasestorage.app",
+  messagingSenderId: "582908802766",
+  appId: "1:582908802766:web:1678af75fb999f081e429f",
 };
 
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
