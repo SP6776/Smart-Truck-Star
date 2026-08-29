@@ -49,7 +49,6 @@
 <div id="root"></div>
 
 <script type="text/babel" data-presets="react">
-
 const { useState, useMemo, useRef, useEffect } = React;
 
 /* ============================= ไอคอน (อิโมจิแทน เพื่อไม่ต้องพึ่งไลบรารีภายนอก) ============================= */
@@ -122,7 +121,7 @@ const REASONS = {
 const AVATAR_POOL = ["👷🏽", "👷🏽", "👷🏾", "👷🏻", "👷🏻", "👷🏽", "👷🏻", "👷🏾", "👷🏾", "👷🏻", "👷🏼", "👷🏼"];
 
 /* 🔒 รหัส PIN สำหรับเข้าโซนเจ้าหน้าที่ (แก้ตัวเลขนี้เป็นรหัสของคุณเองได้เลย) */
-const STAFF_PIN = "2846";
+const STAFF_PIN = "6776";
 
 const DRIVER_SEED = [
   { id: "ST-001", name: "สมชาย ใจดี",     plate: "70-1234", unit: "หน่วยขนส่งเหล็กเส้น",  avatar: "👷🏽", total: 125 },
@@ -243,7 +242,6 @@ const firebaseConfig = {
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
 };
-
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
