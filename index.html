@@ -89,16 +89,26 @@ const STAR_TYPES = {
 };
 const STAR_ORDER = ["ppe", "safety", "activity", "quiz", "special"];
 
-const MAX_RANK_STARS = 500;
+/* จำนวนดาวที่ได้รับต่อการกดให้ 1 ครั้ง แก้ตัวเลขตรงนี้ได้ตามต้องการ */
+const STAR_AMOUNTS = { ppe: 3, safety: 3, activity: 1, quiz: 3, special: 2 };
+
+const MAX_RANK_STARS = 150;
 
 const LEVELS = [
-  { min: 0,   max: 99,  name: "นักขับมือใหม่" },
-  { min: 100, max: 199, name: "นักขับใส่ใจปลอดภัย" },
-  { min: 200, max: 299, name: "นักขับมืออาชีพ" },
-  { min: 300, max: 399, name: "แชมป์ความปลอดภัย" },
-  { min: 400, max: 499, name: "สุดยอดนักขับ SMART TRUCK" },
-  { min: 500, max: Infinity, name: "ตำนาน SMART TRUCK STAR" },
+  { id: "lvl0", min: 0,   max: 19,  name: "นักขับมือใหม่" },
+  { id: "lvl1", min: 20,  max: 49,  name: "นักขับใส่ใจปลอดภัย" },
+  { id: "lvl2", min: 50,  max: 99,  name: "นักขับมืออาชีพ" },
+  { id: "lvl3", min: 100, max: 149, name: "แชมป์ความปลอดภัย" },
+  { id: "lvl4", min: 150, max: Infinity, name: "สุดยอดนักขับ SMART TRUCK" },
 ];
+
+const DEFAULT_REWARD_CONFIG = {
+  lvl0: ["สติกเกอร์ SMART TRUCK STAR", "หมวกแก๊ป TMT Steel", "พวงกุญแจที่ระลึก"],
+  lvl1: ["เสื้อยืด TMT Steel", "กระบอกน้ำ", "คูปองร้านค้าสวัสดิการ 100 บาท"],
+  lvl2: ["คูปองร้านค้าสวัสดิการ 300 บาท", "ชุดเครื่องมือช่าง", "บัตรเติมน้ำมัน 200 บาท"],
+  lvl3: ["บัตรเติมน้ำมัน 500 บาท", "ประกันอุบัติเหตุเพิ่มเติม 1 ปี", "ของรางวัลพิเศษจากหัวหน้างาน"],
+  lvl4: ["โบนัสพิเศษประจำเดือน", "ทริปท่องเที่ยวประจำปี", "รางวัล SMART TRUCK MASTER"],
+};
 
 const REASONS = {
   ppe: ["PPE ครบ 100%", "สวมหมวกนิรภัย", "สวมเสื้อสะท้อนแสง", "สวมรองเท้าเซฟตี้", "แต่งกายเรียบร้อย"],
@@ -111,7 +121,7 @@ const REASONS = {
 const AVATAR_POOL = ["👷🏽", "👷🏽", "👷🏾", "👷🏻", "👷🏻", "👷🏽", "👷🏻", "👷🏾", "👷🏾", "👷🏻", "👷🏼", "👷🏼"];
 
 /* 🔒 รหัส PIN สำหรับเข้าโซนเจ้าหน้าที่ (แก้ตัวเลขนี้เป็นรหัสของคุณเองได้เลย) */
-const STAFF_PIN = "6776";
+const STAFF_PIN = "2846";
 
 const DRIVER_SEED = [
   { id: "ST-001", name: "สมชาย ใจดี",     plate: "70-1234", unit: "หน่วยขนส่งเหล็กเส้น",  avatar: "👷🏽", total: 125 },
@@ -224,13 +234,13 @@ function getNextLevel(total) {
    อย่าลืมเปิด Realtime Database และตั้ง Rules เป็น {"rules": {".read": true, ".write": true}} สำหรับการใช้งานแบบไม่ต้องล็อกอิน (เหมาะกับกิจกรรมภายในระยะสั้น) */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB3KQs5u9nnFrJD7Cs49vVYBBQQVG7RCpI",
-  authDomain: "driver-star-score.firebaseapp.com",
-  databaseURL: "https://driver-star-score-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "driver-star-score",
-  storageBucket: "driver-star-score.firebasestorage.app",
-  messagingSenderId: "582908802766",
-  appId: "1:582908802766:web:1678af75fb999f081e429f",
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
 
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
@@ -428,12 +438,34 @@ function History({ logs, driverId, setView }) {
   );
 }
 
-function RankView({ totals, setView }) {
+function RewardRedeemModal({ levelName, options, onChoose, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(20,18,10,0.6)" }} onClick={onClose}>
+      <div className="sts-card-l-raised p-5 w-full" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
+        <div className="sts-display text-base mb-1 text-center">🎁 แลกรับรางวัล</div>
+        <div className="text-xs text-gray-500 mb-4 text-center">แรงค์ {levelName} — เลือกได้ 1 รางวัล (เลือกแล้วเปลี่ยนไม่ได้)</div>
+        <div className="space-y-2">
+          {options.map((opt, i) => (
+            <button key={i} onClick={() => onChoose(opt)} className="sts-btn w-full text-left p-3 rounded-lg border text-sm" style={{ borderColor: "#EDE9DF", background: "#FFFDF7" }}>
+              🎁 {opt}
+            </button>
+          ))}
+        </div>
+        <button onClick={onClose} className="text-xs text-gray-400 mt-4 w-full text-center">ยกเลิก</button>
+      </div>
+    </div>
+  );
+}
+
+function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRedeem }) {
   const total = totals.total;
   const level = getLevel(total);
   const next = getNextLevel(total);
   const cappedTotal = Math.min(total, MAX_RANK_STARS);
   const pct = Math.min(100, (cappedTotal / MAX_RANK_STARS) * 100);
+  const [openLevel, setOpenLevel] = useState(null);
+
+  const myRedemptions = (redemptions && redemptions[driverId]) || {};
 
   return (
     <div className="pb-24 sts-fadein">
@@ -453,27 +485,51 @@ function RankView({ totals, setView }) {
           )}
         </div>
 
-        <div className="text-xs text-gray-500 mb-2 px-1">บันไดแรงค์ทั้งหมด</div>
+        <div className="text-xs text-gray-500 mb-2 px-1">บันไดแรงค์ & รางวัล</div>
         <div className="space-y-3">
           {LEVELS.map((l) => {
             const achieved = total >= l.min;
-            const isCurrent = l.name === level.name;
+            const isCurrent = l.id === level.id;
+            const redeemed = myRedemptions[l.id];
+            const options = (rewardConfig && rewardConfig[l.id]) || DEFAULT_REWARD_CONFIG[l.id] || [];
             return (
-              <div key={l.name} className="sts-card-l p-4 flex items-center justify-between" style={isCurrent ? { borderColor: "#F5B700" } : {}}>
-                <div className="flex items-center gap-3">
-                  <Star size={20} style={{ color: achieved ? "#B8860B" : "#C7C2B5" }} />
-                  <div>
-                    <div className="sts-display text-sm">{l.name}</div>
-                    <div className="text-xs text-gray-400 sts-mono">{l.min}{l.max === Infinity ? "+" : ` - ${l.max}`} ⭐</div>
+              <div key={l.id} className="sts-card-l p-4" style={isCurrent ? { borderColor: "#F5B700" } : {}}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Star size={20} style={{ color: achieved ? "#B8860B" : "#C7C2B5" }} />
+                    <div>
+                      <div className="sts-display text-sm">{l.name}</div>
+                      <div className="text-xs text-gray-400 sts-mono">{l.min}{l.max === Infinity ? "+" : ` - ${l.max}`} ⭐</div>
+                    </div>
                   </div>
+                  {!achieved && <span className="text-xs text-gray-400">ยังไม่ถึง</span>}
                 </div>
-                {isCurrent ? <span className="text-xs sts-display" style={{ color: "#B8860B" }}>คุณอยู่ตรงนี้</span>
-                  : achieved ? <Check size={20} style={{ color: "#2FAE60" }} /> : <span className="text-xs text-gray-400">ยังไม่ถึง</span>}
+
+                {achieved && (
+                  <div className="mt-3 pt-3" style={{ borderTop: "1px dashed #EDE9DF" }}>
+                    {redeemed ? (
+                      <div className="text-xs" style={{ color: "#2FAE60" }}>✓ แลกแล้ว: {redeemed.choice}</div>
+                    ) : (
+                      <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#20242B" }}>
+                        🎁 แลกรับรางวัล
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       </div>
+
+      {openLevel && (
+        <RewardRedeemModal
+          levelName={openLevel.name}
+          options={(rewardConfig && rewardConfig[openLevel.id]) || DEFAULT_REWARD_CONFIG[openLevel.id] || []}
+          onChoose={(choice) => { onRedeem(driverId, openLevel.id, choice); setOpenLevel(null); }}
+          onClose={() => setOpenLevel(null)}
+        />
+      )}
     </div>
   );
 }
@@ -676,9 +732,10 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rewardConfig, setRewardConfig }) {
   const [tab, setTab] = useState("share");
-  const [selectedDriver, setSelectedDriver] = useState("");
+  const [giveSearch, setGiveSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState([]);
   const [reason, setReason] = useState("");
   const [flash, setFlash] = useState(null);
 
@@ -739,13 +796,35 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
     reader.readAsArrayBuffer(file);
   };
 
+  const giveQuery = normalizeText(giveSearch);
+  const filteredForGiving = giveQuery
+    ? drivers.filter((d) => normalizeText(d.name).includes(giveQuery) || normalizeText(d.plate).includes(giveQuery))
+    : drivers;
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+  const selectAllFiltered = () => setSelectedIds(filteredForGiving.map((d) => d.id));
+  const clearSelection = () => setSelectedIds([]);
+
   const quickAdd = (type) => {
-    if (!selectedDriver) return;
+    if (selectedIds.length === 0) return;
+    const amount = STAR_AMOUNTS[type];
     const r = reason || REASONS[type][0];
-    addStar(selectedDriver, type, type === "special" ? 2 : 1, r);
+    selectedIds.forEach((id) => addStar(id, type, amount, r));
     setFlash(type);
-    setReason("");
-    setTimeout(() => setFlash(null), 900);
+    setTimeout(() => setFlash(null), 1200);
+  };
+
+  const [rewardDraft, setRewardDraft] = useState(null); // { levelId, values: [a,b,c] }
+  const openRewardEdit = (levelId) => {
+    const current = (rewardConfig && rewardConfig[levelId]) || DEFAULT_REWARD_CONFIG[levelId] || ["", "", ""];
+    setRewardDraft({ levelId, values: [...current] });
+  };
+  const saveRewardEdit = () => {
+    if (!rewardDraft) return;
+    setRewardConfig((prev) => ({ ...(prev || {}), [rewardDraft.levelId]: rewardDraft.values }));
+    setRewardDraft(null);
   };
 
   const recentLogs = [...logs].sort((a, b) => b.id - a.id).slice(0, 15);
@@ -754,7 +833,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
     <div className="min-h-screen sts-dark pb-10">
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" right={<button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button>} />
       <div className="flex gap-2 px-4 pt-3 overflow-x-auto sts-scroll">
-        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎮 โหมดกิจกรรม" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }].map((t) => (
+        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "⭐ ให้ดาว" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)} className="sts-btn px-4 py-2 rounded-full text-sm whitespace-nowrap" style={{ background: tab === t.k ? "#FFC531" : "#15181C", color: tab === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
         ))}
       </div>
@@ -788,23 +867,81 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
       {tab === "demo" && (
         <div className="p-4 space-y-4 sts-fadein">
           <div className="sts-card-d p-4">
-            <div className="text-xs text-gray-400 mb-2">พิมพ์ชื่อคนขับที่จะให้ดาว</div>
-            <DriverPickerDark drivers={drivers} selectedId={selectedDriver} onSelect={setSelectedDriver} />
-            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล (ไม่บังคับ)" className="sts-card-d w-full px-3 py-2 mt-2 bg-transparent text-sm" />
+            <div className="text-xs text-gray-400 mb-2">ค้นหาด้วยชื่อ หรือ ทะเบียนรถ</div>
+            <input
+              value={giveSearch}
+              onChange={(e) => setGiveSearch(e.target.value)}
+              placeholder="พิมพ์ชื่อหรือทะเบียน..."
+              className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-3"
+            />
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-400">เลือกแล้ว {selectedIds.length} คน</span>
+              <div className="flex gap-2">
+                <button onClick={selectAllFiltered} className="text-xs" style={{ color: "#FFC531" }}>เลือกทั้งหมด</button>
+                <button onClick={clearSelection} className="text-xs text-gray-500">ล้างที่เลือก</button>
+              </div>
+            </div>
+            <div className="space-y-1 max-h-64 overflow-y-auto sts-scroll">
+              {filteredForGiving.map((d) => {
+                const checked = selectedIds.includes(d.id);
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => toggleSelect(d.id)}
+                    className="sts-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left"
+                    style={{ background: checked ? "rgba(255,197,49,0.12)" : "#1E2227", border: checked ? "1px solid #FFC531" : "1px solid transparent" }}
+                  >
+                    <span style={{
+                      width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                      border: checked ? "none" : "1px solid #4A5560",
+                      background: checked ? "#FFC531" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#0B0D0F",
+                    }}>{checked ? "✓" : ""}</span>
+                    <span>{d.avatar}</span>
+                    <div className="flex-1">
+                      <div className="text-sm">{d.name}</div>
+                      <div className="text-xs text-gray-500 sts-mono">{d.id} · {d.plate}</div>
+                    </div>
+                  </button>
+                );
+              })}
+              {filteredForGiving.length === 0 && <div className="text-xs text-gray-500 text-center py-4">ไม่พบรายชื่อ</div>}
+            </div>
+            <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="เหตุผล (ไม่บังคับ)" className="sts-card-d w-full px-3 py-2 mt-3 bg-transparent text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             {STAR_ORDER.map((k) => {
               const t = STAR_TYPES[k];
               return (
-                <button key={k} onClick={() => quickAdd(k)} className="sts-btn sts-card-d p-4 flex flex-col items-center gap-1" style={{ borderColor: flash === k ? t.color : "#262B31" }}>
+                <button key={k} onClick={() => quickAdd(k)} disabled={selectedIds.length === 0} className="sts-btn sts-card-d p-4 flex flex-col items-center gap-1" style={{ borderColor: flash === k ? t.color : "#262B31", opacity: selectedIds.length === 0 ? 0.4 : 1 }}>
                   <Plus size={16} style={{ color: t.color }} />
                   <span className="text-xl">{t.emoji}</span>
-                  <span className="text-xs sts-display">{t.label}</span>
+                  <span className="text-xs sts-display">{t.label} (+{STAR_AMOUNTS[k]})</span>
                 </button>
               );
             })}
           </div>
-          {flash && <div className="text-center text-sm sts-fadein" style={{ color: STAR_TYPES[flash].color }}>✓ เพิ่มดาวสำเร็จ! ระบบอัปเดตให้คนขับทันที</div>}
+          {flash && <div className="text-center text-sm sts-fadein" style={{ color: STAR_TYPES[flash].color }}>✓ เพิ่มดาวให้ {selectedIds.length} คนสำเร็จ! ระบบอัปเดตให้คนขับทันที</div>}
+        </div>
+      )}
+
+      {tab === "rewards" && (
+        <div className="p-4 space-y-3 sts-fadein">
+          <div className="text-xs text-gray-400 mb-1">แก้ไขรางวัลที่เลือกได้ 3 แบบในแต่ละแรงค์ — คนขับจะเห็นตัวเลือกนี้ตอนกด "แลกรับรางวัล"</div>
+          {LEVELS.map((l) => {
+            const options = (rewardConfig && rewardConfig[l.id]) || DEFAULT_REWARD_CONFIG[l.id] || ["", "", ""];
+            return (
+              <div key={l.id} className="sts-card-d p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="sts-display text-sm">{l.name} <span className="text-xs text-gray-500 sts-mono">({l.min}{l.max === Infinity ? "+" : `-${l.max}`} ⭐)</span></div>
+                  <button onClick={() => openRewardEdit(l.id)} className="text-xs flex items-center gap-1" style={{ color: "#FFC531" }}><Pencil size={12} /> แก้ไข</button>
+                </div>
+                <div className="space-y-1">
+                  {options.map((opt, i) => <div key={i} className="text-xs text-gray-400">🎁 {opt || "(ยังไม่ตั้งชื่อรางวัล)"}</div>)}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -888,6 +1025,29 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars }) {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {rewardDraft && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setRewardDraft(null)}>
+          <div className="sts-card-d-raised p-5 w-full" style={{ maxWidth: 380, background: "#15181C" }} onClick={(e) => e.stopPropagation()}>
+            <div className="sts-display text-sm mb-3">แก้ไขรางวัล: {LEVELS.find((l) => l.id === rewardDraft.levelId)?.name}</div>
+            {[0, 1, 2].map((i) => (
+              <input
+                key={i}
+                value={rewardDraft.values[i] || ""}
+                onChange={(e) => {
+                  const values = [...rewardDraft.values];
+                  values[i] = e.target.value;
+                  setRewardDraft({ ...rewardDraft, values });
+                }}
+                placeholder={`รางวัลตัวเลือกที่ ${i + 1}`}
+                className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-2"
+              />
+            ))}
+            <button onClick={saveRewardEdit} className="sts-btn w-full py-2 rounded-lg text-sm sts-display mt-1" style={{ background: "#FFC531", color: "#0B0D0F" }}>บันทึก</button>
+            <button onClick={() => setRewardDraft(null)} className="text-xs text-gray-500 mt-3 w-full text-center">ยกเลิก</button>
           </div>
         </div>
       )}
@@ -1143,6 +1303,8 @@ function LoadingScreen() {
 function App() {
   const [drivers, setDriversRaw] = useState([]);
   const [logs, setLogsRaw] = useState([]);
+  const [rewardConfig, setRewardConfig] = useState(DEFAULT_REWARD_CONFIG);
+  const [redemptions, setRedemptions] = useState({});
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(null);
   const [currentDriverId, setCurrentDriverId] = useState(null);
@@ -1154,6 +1316,8 @@ function App() {
 
     const driversRef = db.ref("drivers");
     const logsRef = db.ref("logs");
+    const rewardConfigRef = db.ref("rewardConfig");
+    const redemptionsRef = db.ref("redemptions");
 
     driversRef.once("value").then((snap) => {
       if (!snap.exists()) {
@@ -1169,6 +1333,9 @@ function App() {
         logsRef.set(seedObj);
       }
     });
+    rewardConfigRef.once("value").then((snap) => {
+      if (!snap.exists()) rewardConfigRef.set(DEFAULT_REWARD_CONFIG);
+    });
 
     const onDrivers = driversRef.on("value", (snap) => {
       const val = snap.val() || {};
@@ -1179,12 +1346,34 @@ function App() {
       const val = snap.val() || {};
       setLogsRaw(Object.keys(val).map((k) => ({ ...val[k], id: k })));
     });
+    const onRewardConfig = rewardConfigRef.on("value", (snap) => {
+      const val = snap.val();
+      setRewardConfig(val || DEFAULT_REWARD_CONFIG);
+    });
+    const onRedemptions = redemptionsRef.on("value", (snap) => {
+      setRedemptions(snap.val() || {});
+    });
 
     return () => {
       driversRef.off("value", onDrivers);
       logsRef.off("value", onLogs);
+      rewardConfigRef.off("value", onRewardConfig);
+      redemptionsRef.off("value", onRedemptions);
     };
   }, []);
+
+  const persistRewardConfig = (updater) => {
+    setRewardConfig((prev) => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      if (db) db.ref("rewardConfig").set(next).catch(() => {});
+      return next;
+    });
+  };
+
+  function redeemReward(driverId, levelId, choice) {
+    if (!db) return;
+    db.ref(`redemptions/${driverId}/${levelId}`).set({ choice, redeemedAt: new Date().toISOString() });
+  }
 
   const persistDrivers = (updater) => {
     setDriversRaw((prev) => {
@@ -1242,7 +1431,7 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={exitToLogin} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} />;
 
@@ -1256,7 +1445,7 @@ function App() {
       {view === "home" && <DriverHome driver={driver} totals={totals} todayTotal={todayTotal} setView={setView} exit={exitToLogin} />}
       {view === "mystar" && <MyStar totals={totals} setView={setView} />}
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} />}
-      {view === "reward" && <RankView totals={totals} setView={setView} />}
+      {view === "reward" && <RankView totals={totals} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} redemptions={redemptions} onRedeem={redeemReward} />}
       <BottomNav view={view} setView={setView} />
     </div>
   );
