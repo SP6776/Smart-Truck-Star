@@ -121,7 +121,7 @@ const REASONS = {
 const AVATAR_POOL = ["👷🏽", "👷🏽", "👷🏾", "👷🏻", "👷🏻", "👷🏽", "👷🏻", "👷🏾", "👷🏾", "👷🏻", "👷🏼", "👷🏼"];
 
 /* 🔒 รหัส PIN สำหรับเข้าโซนเจ้าหน้าที่ (แก้ตัวเลขนี้เป็นรหัสของคุณเองได้เลย) */
-const STAFF_PIN = "6776";
+const STAFF_PIN = "2846";
 
 const DRIVER_SEED = [
   { id: "ST-001", name: "สมชาย ใจดี",     plate: "70-1234", unit: "หน่วยขนส่งเหล็กเส้น",  avatar: "👷🏽", total: 125 },
@@ -234,14 +234,15 @@ function getNextLevel(total) {
    อย่าลืมเปิด Realtime Database และตั้ง Rules เป็น {"rules": {".read": true, ".write": true}} สำหรับการใช้งานแบบไม่ต้องล็อกอิน (เหมาะกับกิจกรรมภายในระยะสั้น) */
 
 const firebaseConfig = {
-  apiKey: "AIzaSyB3KQs5u9nnFrJD7Cs49vVYBBQQVG7RCpI",
-  authDomain: "driver-star-score.firebaseapp.com",
-  databaseURL: "https://driver-star-score-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "driver-star-score",
-  storageBucket: "driver-star-score.firebasestorage.app",
-  messagingSenderId: "582908802766",
-  appId: "1:582908802766:web:1678af75fb999f081e429f",
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  databaseURL: "https://YOUR_PROJECT_ID-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
 };
+
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
@@ -731,7 +732,7 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rewardConfig, setRewardConfig }) {
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions }) {
   const [tab, setTab] = useState("share");
   const [giveSearch, setGiveSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -832,7 +833,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
     <div className="min-h-screen sts-dark pb-10">
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" right={<button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button>} />
       <div className="flex gap-2 px-4 pt-3 overflow-x-auto sts-scroll">
-        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "⭐ ให้ดาว" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }].map((t) => (
+        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "⭐ ให้ดาว" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: "📦 คำขอแลกรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)} className="sts-btn px-4 py-2 rounded-full text-sm whitespace-nowrap" style={{ background: tab === t.k ? "#FFC531" : "#15181C", color: tab === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
         ))}
       </div>
@@ -941,6 +942,69 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
               </div>
             );
           })}
+        </div>
+      )}
+
+      {tab === "redemptions" && (
+        <div className="p-4 space-y-3 sts-fadein">
+          {(() => {
+            const rows = [];
+            Object.keys(redemptions || {}).forEach((driverId) => {
+              Object.keys(redemptions[driverId] || {}).forEach((levelId) => {
+                const r = redemptions[driverId][levelId];
+                const driver = drivers.find((d) => d.id === driverId);
+                const level = LEVELS.find((l) => l.id === levelId);
+                rows.push({ driverId, levelId, driver, level, ...r });
+              });
+            });
+            rows.sort((a, b) => (b.redeemedAt || "").localeCompare(a.redeemedAt || ""));
+
+            if (rows.length === 0) {
+              return <div className="text-center text-sm text-gray-500 py-10">ยังไม่มีใครแลกรับรางวัล</div>;
+            }
+
+            return (
+              <React.Fragment>
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-xs text-gray-400">ทั้งหมด {rows.length} รายการ</div>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("ยืนยันล้างคำขอแลกรางวัลทั้งหมด? คนขับทุกคนจะสามารถกดแลกใหม่ได้อีกครั้ง")) {
+                        onResetRedemptions();
+                      }
+                    }}
+                    className="text-xs"
+                    style={{ color: "#FF6B6B" }}
+                  >
+                    ล้างคำขอทั้งหมด
+                  </button>
+                </div>
+                {rows.map((r) => (
+                  <div key={`${r.driverId}-${r.levelId}`} className="sts-card-d p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{r.driver?.avatar || "👷"}</span>
+                      <div>
+                        <div className="text-sm">{r.driver?.name || r.driverId} <span className="text-gray-500 text-xs sts-mono">({r.driverId})</span></div>
+                        <div className="text-xs text-gray-500">แรงค์ {r.level?.name || r.levelId} · 🎁 {r.choice}</div>
+                        <div className="text-xs text-gray-600 sts-mono">{r.redeemedAt ? new Date(r.redeemedAt).toLocaleString("th-TH") : ""}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(`ยกเลิกการแลกรางวัลของ ${r.driver?.name || r.driverId}? คนคนนี้จะกดแลกใหม่ได้อีกครั้ง`)) {
+                          onCancelRedemption(r.driverId, r.levelId);
+                        }
+                      }}
+                      className="text-xs px-3 py-1 rounded-lg"
+                      style={{ background: "#5A2323", color: "#FFD9D9" }}
+                    >
+                      ยกเลิก
+                    </button>
+                  </div>
+                ))}
+              </React.Fragment>
+            );
+          })()}
         </div>
       )}
 
@@ -1374,6 +1438,15 @@ function App() {
     db.ref(`redemptions/${driverId}/${levelId}`).set({ choice, redeemedAt: new Date().toISOString() });
   }
 
+  function cancelRedemption(driverId, levelId) {
+    if (!db) return;
+    db.ref(`redemptions/${driverId}/${levelId}`).remove();
+  }
+
+  function resetAllRedemptions() {
+    if (db) db.ref("redemptions").set({});
+  }
+
   const persistDrivers = (updater) => {
     setDriversRaw((prev) => {
       const next = typeof updater === "function" ? updater(prev) : updater;
@@ -1430,7 +1503,7 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={exitToLogin} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} />;
 
