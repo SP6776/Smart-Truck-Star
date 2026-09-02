@@ -20,10 +20,26 @@
   .sts-display { font-family: 'Kanit', sans-serif; }
   .sts-mono { font-family: 'JetBrains Mono', monospace; }
 
-  .sts-light { background:#F7F6F2; color:#20242B; min-height:100vh; }
-  .sts-card-l { background:#FFFFFF; border:1px solid #E7E4DC; border-radius:16px; box-shadow: 0 1px 3px rgba(20,20,10,0.04); }
-  .sts-card-l-raised { background:#FFFFFF; border:1px solid #EDE9DF; border-radius:18px; box-shadow: 0 6px 18px rgba(30,25,10,0.06); }
-  .sts-hazard-l { height:6px; width:100%; background: repeating-linear-gradient(135deg, #F5B700, #F5B700 10px, #FFF7DE 10px, #FFF7DE 20px); }
+  /* โหมดกลางวัน/กลางคืน สำหรับฝั่งคนขับ ควบคุมด้วย class .theme-day / .theme-night */
+  .theme-day {
+    --bg: #F7F6F2; --surface: #FFFFFF; --surface-border: #E7E4DC; --surface-raised-border: #EDE9DF;
+    --text-primary: #20242B; --accent: #B8860B; --muted-icon: #C7C2B5;
+    --progress-track: #EFEBE0; --hazard-a: #F5B700; --hazard-b: #FFF7DE;
+    --modal-bg: rgba(20,18,10,0.6); --modal-card-bg: #FFFDF7; --modal-card-border: #EDE9DF;
+    --input-bg: #FFFFFF;
+  }
+  .theme-night {
+    --bg: #0B0D0F; --surface: #15181C; --surface-border: #262B31; --surface-raised-border: #2A2F35;
+    --text-primary: #F2F3F4; --accent: #FFC531; --muted-icon: #4A5560;
+    --progress-track: #20242A; --hazard-a: #FFC531; --hazard-b: #14161A;
+    --modal-bg: rgba(0,0,0,0.7); --modal-card-bg: #1E2227; --modal-card-border: #2A2F35;
+    --input-bg: #1E2227;
+  }
+
+  .sts-light { background:var(--bg); color:var(--text-primary); min-height:100vh; transition: background .25s ease, color .25s ease; }
+  .sts-card-l { background:var(--surface); border:1px solid var(--surface-border); border-radius:16px; box-shadow: 0 1px 3px rgba(20,20,10,0.04); transition: background .25s ease, border-color .25s ease; }
+  .sts-card-l-raised { background:var(--surface); border:1px solid var(--surface-raised-border); border-radius:18px; box-shadow: 0 6px 18px rgba(30,25,10,0.06); transition: background .25s ease, border-color .25s ease; }
+  .sts-hazard-l { height:6px; width:100%; background: repeating-linear-gradient(135deg, var(--hazard-a), var(--hazard-a) 10px, var(--hazard-b) 10px, var(--hazard-b) 20px); }
 
   .sts-dark { background:#0B0D0F; color:#F2F3F4; min-height:100vh; }
   .sts-card-d { background:#15181C; border:1px solid #262B31; border-radius:14px; }
@@ -39,7 +55,7 @@
   @keyframes stsPop { 0%{transform:scale(.3) translateY(30px); opacity:0;} 60%{transform:scale(1.1);opacity:1;} 100%{transform:scale(1) translateY(0);} }
   .sts-confetti { position:absolute; top:-10%; font-size:22px; animation: stsFall linear forwards; }
   @keyframes stsFall { from{ transform: translateY(0) rotate(0deg); opacity:1;} to{ transform: translateY(110vh) rotate(360deg); opacity:0;} }
-  .sts-progress-track-l { background:#EFEBE0; border-radius:999px; height:10px; overflow:hidden; }
+  .sts-progress-track-l { background:var(--progress-track); border-radius:999px; height:10px; overflow:hidden; }
   .sts-progress-track { background:#20242A; border-radius:999px; height:10px; overflow:hidden; }
   .sts-progress-fill { height:100%; border-radius:999px; transition: width .6s ease; }
   .sts-glow { box-shadow: 0 0 0 1px rgba(255,255,255,0.04), 0 8px 24px rgba(0,0,0,0.5); }
@@ -121,7 +137,7 @@ const REASONS = {
 const AVATAR_POOL = ["👷🏽", "👷🏽", "👷🏾", "👷🏻", "👷🏻", "👷🏽", "👷🏻", "👷🏾", "👷🏾", "👷🏻", "👷🏼", "👷🏼"];
 
 /* 🔒 รหัส PIN สำหรับเข้าโซนเจ้าหน้าที่ (แก้ตัวเลขนี้เป็นรหัสของคุณเองได้เลย) */
-const STAFF_PIN = "2846";
+const STAFF_PIN = "6776";
 
 const DRIVER_SEED = [
   { id: "ST-001", name: "สมชาย ใจดี",     plate: "70-1234", unit: "หน่วยขนส่งเหล็กเส้น",  avatar: "👷🏽", total: 125 },
@@ -269,12 +285,12 @@ function LevelProgressLight({ total }) {
         <span className="text-xs text-gray-500">ระดับปัจจุบัน</span>
         {next && <span className="text-xs text-gray-400">{total} / {next.min}</span>}
       </div>
-      <div className="sts-display text-lg mb-2" style={{ color: "#B8860B" }}>{level.name}</div>
+      <div className="sts-display text-lg mb-2" style={{ color: "var(--accent)" }}>{level.name}</div>
       <div className="sts-progress-track-l">
         <div className="sts-progress-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#F5B700,#EA7C1F)" }} />
       </div>
       {next ? (
-        <div className="text-xs text-gray-500 mt-2">อีก <span className="sts-mono" style={{ color: "#20242B" }}>{next.min - total}</span> ดาว → <span style={{ color: "#B8860B" }}>{next.name}</span></div>
+        <div className="text-xs text-gray-500 mt-2">อีก <span className="sts-mono" style={{ color: "var(--text-primary)" }}>{next.min - total}</span> ดาว → <span style={{ color: "var(--accent)" }}>{next.name}</span></div>
       ) : (
         <div className="text-xs text-gray-500 mt-2">คุณอยู่ระดับสูงสุดแล้ว 🏆</div>
       )}
@@ -296,7 +312,7 @@ function BottomNav({ view, setView }) {
           const Icon = it.icon;
           const active = view === it.key;
           return (
-            <button key={it.key} onClick={() => setView(it.key)} className="sts-btn flex flex-col items-center gap-1 px-2 py-1" style={{ color: active ? "#B8860B" : "#9CA3AF" }}>
+            <button key={it.key} onClick={() => setView(it.key)} className="sts-btn flex flex-col items-center gap-1 px-2 py-1" style={{ color: active ? "var(--accent)" : "#9CA3AF" }}>
               <Icon size={20} />
               <span className="text-[10px]">{it.label}</span>
             </button>
@@ -307,16 +323,27 @@ function BottomNav({ view, setView }) {
   );
 }
 
-function TopBarLight({ title, onBack }) {
+function ThemeToggle({ theme, onToggle }) {
   return (
-    <div className="flex items-center gap-2 px-4 py-3 sticky top-0 z-10" style={{ background: "#F7F6F2", borderBottom: "1px solid #EDE9DF" }}>
-      {onBack && <button onClick={onBack} className="text-gray-500"><ChevronLeft size={22} /></button>}
-      <span className="sts-display text-base">{title}</span>
+    <button onClick={onToggle} className="sts-btn" style={{ fontSize: 20, lineHeight: 1 }} aria-label="สลับโหมดกลางวัน/กลางคืน" title="สลับโหมดกลางวัน/กลางคืน">
+      {theme === "night" ? "🌙" : "☀️"}
+    </button>
+  );
+}
+
+function TopBarLight({ title, onBack, theme, onToggleTheme }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-3 sticky top-0 z-10" style={{ background: "var(--bg)", borderBottom: "1px solid var(--surface-raised-border)" }}>
+      <div className="flex items-center gap-2">
+        {onBack && <button onClick={onBack} className="text-gray-500"><ChevronLeft size={22} /></button>}
+        <span className="sts-display text-base">{title}</span>
+      </div>
+      {onToggleTheme && <ThemeToggle theme={theme} onToggle={onToggleTheme} />}
     </div>
   );
 }
 
-function DriverHome({ driver, totals, todayTotal, setView, exit }) {
+function DriverHome({ driver, totals, todayTotal, setView, exit, theme, onToggleTheme }) {
   return (
     <div className="p-4 pb-24 sts-fadein">
       <div className="flex items-center justify-between mb-5">
@@ -328,12 +355,15 @@ function DriverHome({ driver, totals, todayTotal, setView, exit }) {
             <div className="text-xs text-gray-400">{driver.unit}</div>
           </div>
         </div>
-        <button onClick={exit} className="text-xs text-gray-400">ออก</button>
+        <div className="flex items-center gap-3">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <button onClick={exit} className="text-xs text-gray-400">ออก</button>
+        </div>
       </div>
 
       <div className="sts-card-l-raised p-5 text-center mb-4">
         <div className="text-xs text-gray-500 mb-1">⭐ ดาววันนี้</div>
-        <div className="sts-mono sts-display" style={{ fontSize: 52, lineHeight: 1, color: "#B8860B" }}>{todayTotal}</div>
+        <div className="sts-mono sts-display" style={{ fontSize: 52, lineHeight: 1, color: "var(--accent)" }}>{todayTotal}</div>
         <div className="mt-2 text-lg">{"⭐".repeat(Math.min(todayTotal, 10)) || "—"}</div>
       </div>
 
@@ -346,7 +376,7 @@ function DriverHome({ driver, totals, todayTotal, setView, exit }) {
 
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setView("mystar")} className="sts-btn sts-card-l p-3 text-left">
-          <Star size={18} className="mb-1" style={{ color: "#B8860B" }} />
+          <Star size={18} className="mb-1" style={{ color: "var(--accent)" }} />
           <div className="text-sm">ดูดาวแต่ละประเภท</div>
         </button>
         <button onClick={() => setView("history")} className="sts-btn sts-card-l p-3 text-left">
@@ -358,11 +388,11 @@ function DriverHome({ driver, totals, todayTotal, setView, exit }) {
   );
 }
 
-function MyStar({ totals, setView }) {
+function MyStar({ totals, setView, theme, onToggleTheme }) {
   const max = Math.max(1, ...STAR_ORDER.map((k) => totals[k]));
   return (
     <div className="pb-24 sts-fadein">
-      <TopBarLight title="ดาวของฉัน" onBack={() => setView("home")} />
+      <TopBarLight title="ดาวของฉัน" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
       <div className="p-4 space-y-3">
         {STAR_ORDER.map((k) => {
           const t = STAR_TYPES[k];
@@ -381,14 +411,14 @@ function MyStar({ totals, setView }) {
         })}
         <div className="sts-card-l-raised p-4 flex items-center justify-between mt-2">
           <span className="sts-display text-sm text-gray-500">รวมทั้งหมด</span>
-          <span className="sts-mono sts-display text-2xl" style={{ color: "#B8860B" }}>{totals.total} ⭐</span>
+          <span className="sts-mono sts-display text-2xl" style={{ color: "var(--accent)" }}>{totals.total} ⭐</span>
         </div>
       </div>
     </div>
   );
 }
 
-function History({ logs, driverId, setView }) {
+function History({ logs, driverId, setView, theme, onToggleTheme }) {
   const [typeFilter, setTypeFilter] = useState("all");
   const [rangeFilter, setRangeFilter] = useState("all");
   const mine = logs.filter((l) => l.driverId === driverId);
@@ -402,16 +432,16 @@ function History({ logs, driverId, setView }) {
 
   return (
     <div className="pb-24 sts-fadein">
-      <TopBarLight title="ประวัติดาว" onBack={() => setView("home")} />
+      <TopBarLight title="ประวัติดาว" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
       <div className="p-4">
         <div className="flex gap-2 mb-4 overflow-x-auto sts-scroll">
-          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value)} className="sts-card-l px-3 py-2 text-sm bg-white">
+          <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={{ background: "var(--input-bg)", color: "var(--text-primary)" }}>
             <option value="all">ทั้งหมด</option>
             <option value="today">วันนี้</option>
             <option value="7d">7 วัน</option>
             <option value="month">เดือนนี้</option>
           </select>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="sts-card-l px-3 py-2 text-sm bg-white">
+          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={{ background: "var(--input-bg)", color: "var(--text-primary)" }}>
             <option value="all">ทุกประเภท</option>
             {STAR_ORDER.map((k) => <option key={k} value={k}>{STAR_TYPES[k].emoji} {STAR_TYPES[k].label}</option>)}
           </select>
@@ -441,13 +471,13 @@ function History({ logs, driverId, setView }) {
 
 function RewardRedeemModal({ levelName, options, onChoose, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(20,18,10,0.6)" }} onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "var(--modal-bg)" }} onClick={onClose}>
       <div className="sts-card-l-raised p-5 w-full" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
         <div className="sts-display text-base mb-1 text-center">🎁 แลกรับรางวัล</div>
         <div className="text-xs text-gray-500 mb-4 text-center">แรงค์ {levelName} — เลือกได้ 1 รางวัล (เลือกแล้วเปลี่ยนไม่ได้)</div>
         <div className="space-y-2">
           {options.map((opt, i) => (
-            <button key={i} onClick={() => onChoose(opt)} className="sts-btn w-full text-left p-3 rounded-lg border text-sm" style={{ borderColor: "#EDE9DF", background: "#FFFDF7" }}>
+            <button key={i} onClick={() => onChoose(opt)} className="sts-btn w-full text-left p-3 rounded-lg border text-sm" style={{ borderColor: "var(--modal-card-border)", background: "var(--modal-card-bg)", color: "var(--text-primary)" }}>
               🎁 {opt}
             </button>
           ))}
@@ -458,7 +488,7 @@ function RewardRedeemModal({ levelName, options, onChoose, onClose }) {
   );
 }
 
-function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRedeem }) {
+function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRedeem, theme, onToggleTheme }) {
   const total = totals.total;
   const level = getLevel(total);
   const next = getNextLevel(total);
@@ -470,19 +500,19 @@ function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRede
 
   return (
     <div className="pb-24 sts-fadein">
-      <TopBarLight title="🏆 แรงค์ของฉัน" onBack={() => setView("home")} />
+      <TopBarLight title="🏆 แรงค์ของฉัน" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
       <div className="p-4">
         <div className="sts-card-l-raised p-5 text-center mb-4">
           <div className="text-xs text-gray-500 mb-1">คุณอยู่แรงค์</div>
-          <div className="sts-display text-2xl mb-2" style={{ color: "#B8860B" }}>{level.name}</div>
+          <div className="sts-display text-2xl mb-2" style={{ color: "var(--accent)" }}>{level.name}</div>
           <div className="sts-mono sts-display text-3xl mb-3">{total} <span className="text-lg text-gray-400">/ {MAX_RANK_STARS} ⭐</span></div>
           <div className="sts-progress-track-l mb-2">
             <div className="sts-progress-fill" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#F5B700,#EA7C1F)" }} />
           </div>
           {next ? (
-            <div className="text-sm text-gray-500">อีก <span style={{ color: "#20242B" }} className="sts-mono">{next.min - total}</span> ดาวถึงแรงค์ <span style={{ color: "#B8860B" }}>{next.name}</span></div>
+            <div className="text-sm text-gray-500">อีก <span style={{ color: "var(--text-primary)" }} className="sts-mono">{next.min - total}</span> ดาวถึงแรงค์ <span style={{ color: "var(--accent)" }}>{next.name}</span></div>
           ) : (
-            <div className="text-sm" style={{ color: "#B8860B" }}>🎉 คุณอยู่แรงค์สูงสุดแล้ว!</div>
+            <div className="text-sm" style={{ color: "var(--accent)" }}>🎉 คุณอยู่แรงค์สูงสุดแล้ว!</div>
           )}
         </div>
 
@@ -499,7 +529,7 @@ function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRede
               <div key={l.id} className="sts-card-l p-4" style={isCurrent ? { borderColor: "#F5B700" } : {}}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Star size={20} style={{ color: achieved ? "#B8860B" : "#C7C2B5" }} />
+                    <Star size={20} style={{ color: achieved ? "var(--accent)" : "var(--muted-icon)" }} />
                     <div>
                       <div className="sts-display text-sm">{l.name}</div>
                       <div className="text-xs text-gray-400 sts-mono">{l.min}{l.max === Infinity ? "+" : ` - ${l.max}`} ⭐</div>
@@ -513,7 +543,7 @@ function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRede
                     {redeemed ? (
                       <div className="text-xs" style={{ color: "#2FAE60" }}>✓ แลกแล้ว: {redeemed.choice}</div>
                     ) : (
-                      <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#20242B" }}>
+                      <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
                         🎁 แลกรับรางวัล
                       </button>
                     )}
@@ -1221,7 +1251,7 @@ function DriverSearch({ drivers, onEnter, onBack }) {
 
 /* ============================= LOGIN (แยกโซนคนขับ / เจ้าหน้าที่) ============================= */
 
-function LoginView({ drivers, onEnter }) {
+function LoginView({ drivers, onEnter, theme, onToggleTheme }) {
   const [showDriverList, setShowDriverList] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [showPinPrompt, setShowPinPrompt] = useState(false);
@@ -1253,20 +1283,21 @@ function LoginView({ drivers, onEnter }) {
   };
 
   return (
-    <div className="min-h-screen sts-light flex flex-col items-center justify-center p-6 sts-fadein relative">
+    <div className={`min-h-screen sts-light ${theme === "night" ? "theme-night" : "theme-day"} flex flex-col items-center justify-center p-6 sts-fadein relative`}>
       <div className="sts-hazard-l absolute top-0 left-0 right-0" />
+      <div className="absolute top-4 right-4"><ThemeToggle theme={theme} onToggle={onToggleTheme} /></div>
       <div onClick={handleLogoTap} style={{ cursor: "default" }}>
-        <Truck size={44} style={{ color: "#B8860B" }} className="mb-3" />
+        <Truck size={44} style={{ color: "var(--accent)" }} className="mb-3" />
       </div>
-      <div onClick={handleLogoTap} className="sts-display text-3xl text-center" style={{ color: "#20242B", cursor: "default", userSelect: "none" }}>SMART TRUCK STAR</div>
+      <div onClick={handleLogoTap} className="sts-display text-3xl text-center" style={{ color: "var(--text-primary)", cursor: "default", userSelect: "none" }}>SMART TRUCK STAR</div>
       <div className="text-sm text-gray-500 mb-1">TMT Steel</div>
-      <div className="sts-display text-sm mb-6" style={{ color: "#B8860B" }}>ขับปลอดภัย ได้ดาว ได้รางวัล</div>
+      <div className="sts-display text-sm mb-6" style={{ color: "var(--accent)" }}>ขับปลอดภัย ได้ดาว ได้รางวัล</div>
       <div className="text-[11px] text-gray-400 mb-4 text-center max-w-xs">ข้อมูลดาวสะสมจะอัปเดตให้ทุกเครื่องที่เปิดลิงก์นี้เห็นตรงกันโดยอัตโนมัติ ไม่ต้องสมัครหรือล็อกอิน</div>
 
       {!showDriverList && !showStaff && !showPinPrompt && (
         <div className="w-full max-w-sm space-y-4">
           <button onClick={() => setShowDriverList(true)} className="sts-btn sts-card-l-raised w-full p-5 flex items-center gap-3">
-            <Truck size={26} style={{ color: "#B8860B" }} />
+            <Truck size={26} style={{ color: "var(--accent)" }} />
             <div className="text-left">
               <div className="sts-display text-base">สมุดดาวของฉัน</div>
               <div className="text-xs text-gray-500">สำหรับคนขับรถบรรทุก</div>
@@ -1333,8 +1364,8 @@ function FirebaseSetupNeeded() {
   return (
     <div className="sts-light min-h-screen flex flex-col items-center justify-center p-6 relative">
       <div className="sts-hazard-l absolute top-0 left-0 right-0" />
-      <Truck size={44} style={{ color: "#B8860B" }} className="mb-3" />
-      <div className="sts-display text-2xl text-center mb-1" style={{ color: "#20242B" }}>SMART TRUCK STAR</div>
+      <Truck size={44} style={{ color: "var(--accent)" }} className="mb-3" />
+      <div className="sts-display text-2xl text-center mb-1" style={{ color: "var(--text-primary)" }}>SMART TRUCK STAR</div>
       <div className="text-sm text-gray-500 mb-6">ยังไม่ได้ตั้งค่าฐานข้อมูล Firebase</div>
 
       <div className="w-full max-w-md sts-card-l-raised p-5 text-sm leading-relaxed">
@@ -1359,8 +1390,8 @@ function FirebaseSetupNeeded() {
 function LoadingScreen() {
   return (
     <div className="sts-light min-h-screen flex flex-col items-center justify-center">
-      <Truck size={40} style={{ color: "#B8860B" }} className="mb-3" />
-      <div className="sts-display text-lg" style={{ color: "#20242B" }}>กำลังเชื่อมต่อฐานข้อมูล...</div>
+      <Truck size={40} style={{ color: "var(--accent)" }} className="mb-3" />
+      <div className="sts-display text-lg" style={{ color: "var(--text-primary)" }}>กำลังเชื่อมต่อฐานข้อมูล...</div>
       <div className="text-xs text-gray-500 mt-1">SMART TRUCK STAR</div>
     </div>
   );
@@ -1375,6 +1406,19 @@ function App() {
   const [role, setRole] = useState(null);
   const [currentDriverId, setCurrentDriverId] = useState(null);
   const [view, setView] = useState("home");
+
+  // โหมดกลางวัน/กลางคืน — จำค่าไว้ในเครื่องของแต่ละคน (ไม่ sync ข้ามเครื่อง เพราะเป็นความชอบส่วนตัว)
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("sts_theme") || "day"; } catch (e) { return "day"; }
+  });
+  const toggleTheme = () => {
+    setTheme((prev) => {
+      const next = prev === "day" ? "night" : "day";
+      try { localStorage.setItem("sts_theme", next); } catch (e) {}
+      return next;
+    });
+  };
+  const themeClass = theme === "night" ? "theme-night" : "theme-day";
 
   // เชื่อมต่อ Firebase Realtime Database แบบ live (push อัปเดตทันทีไม่ต้อง polling)
   useEffect(() => {
@@ -1502,7 +1546,7 @@ function App() {
   if (!isFirebaseConfigured) return <FirebaseSetupNeeded />;
   if (loading) return <LoadingScreen />;
 
-  if (!role) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} />;
+  if (!role) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={exitToLogin} />;
 
@@ -1511,16 +1555,16 @@ function App() {
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} />;
 
   const driver = drivers.find((d) => d.id === currentDriverId);
-  if (!driver) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} />;
+  if (!driver) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
   const totals = totalsByDriver[currentDriverId] || { total: 0, ppe: 0, safety: 0, activity: 0, quiz: 0, special: 0 };
   const todayTotal = todayByDriver[currentDriverId] || 0;
 
   return (
-    <div className="sts-light" style={{ maxWidth: 480, margin: "0 auto", position: "relative" }}>
-      {view === "home" && <DriverHome driver={driver} totals={totals} todayTotal={todayTotal} setView={setView} exit={exitToLogin} />}
-      {view === "mystar" && <MyStar totals={totals} setView={setView} />}
-      {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} />}
-      {view === "reward" && <RankView totals={totals} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} redemptions={redemptions} onRedeem={redeemReward} />}
+    <div className={`sts-light ${themeClass}`} style={{ maxWidth: 480, margin: "0 auto", position: "relative" }}>
+      {view === "home" && <DriverHome driver={driver} totals={totals} todayTotal={todayTotal} setView={setView} exit={exitToLogin} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "mystar" && <MyStar totals={totals} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "reward" && <RankView totals={totals} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} redemptions={redemptions} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
       <BottomNav view={view} setView={setView} />
     </div>
   );
