@@ -257,7 +257,6 @@ const firebaseConfig = {
   storageBucket: "driver-star-score.firebasestorage.app",
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
-
 };
 
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
@@ -832,6 +831,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
+  const [logSearch, setLogSearch] = useState("");
 
   const openNewForm = () => { setForm({ id: "", name: "", plate: "", unit: "" }); setEditingId(null); setShowForm(true); };
   const openEditForm = (d) => { setForm({ id: d.id, name: d.name, plate: d.plate || "", unit: d.unit || "" }); setEditingId(d.id); setShowForm(true); };
@@ -914,7 +914,17 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
     setRewardDraft(null);
   };
 
-  const recentLogs = [...logs].sort((a, b) => b.id - a.id).slice(0, 15);
+  const sortedLogs = [...logs].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+    return String(b.id).localeCompare(String(a.id));
+  });
+  const logQuery = normalizeText(logSearch);
+  const filteredLogs = logQuery
+    ? sortedLogs.filter((l) => {
+        const d = drivers.find((x) => x.id === l.driverId);
+        return normalizeText(d?.name || "").includes(logQuery) || normalizeText(l.reason || "").includes(logQuery);
+      })
+    : sortedLogs;
 
   return (
     <div className="min-h-screen sts-dark pb-10">
@@ -1097,8 +1107,16 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
 
       {tab === "logs" && (
         <div className="p-4 space-y-2 sts-fadein">
-          <div className="text-xs text-gray-500 mb-1">แสดง 15 รายการล่าสุด · กดไอคอนดินสอเพื่อแก้ไขหรือลบรายการที่ให้ผิด</div>
-          {recentLogs.map((l) => {
+          <input
+            value={logSearch}
+            onChange={(e) => setLogSearch(e.target.value)}
+            placeholder="ค้นหาด้วยชื่อคนขับ หรือเหตุผล..."
+            className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-1"
+            style={{ color: "#F2F3F4" }}
+          />
+          <div className="text-xs text-gray-500 mb-1">ทั้งหมด {filteredLogs.length} รายการ · กดไอคอนดินสอเพื่อแก้ไขหรือลบรายการที่ให้ผิด</div>
+          {filteredLogs.length === 0 && <div className="text-center text-gray-500 text-sm py-10">ไม่พบรายการ</div>}
+          {filteredLogs.map((l) => {
             const d = drivers.find((x) => x.id === l.driverId);
             const t = STAR_TYPES[l.type];
             return (
@@ -1658,16 +1676,14 @@ function App() {
     const storageKey = `sts_level_${currentDriverId}`;
     let prevLevelId = null;
     try { prevLevelId = localStorage.getItem(storageKey); } catch (e) {}
-    if (prevLevelId === null) {
-      try { localStorage.setItem(storageKey, level.id); } catch (e) {}
-      return;
-    }
-    const prevIdx = LEVELS.findIndex((l) => l.id === prevLevelId);
+    // ถ้ายังไม่เคยบันทึกไว้ในเครื่องนี้เลย ให้ถือว่าเดิมอยู่แรงค์ต่ำสุด (lvl0)
+    // เพื่อให้เห็นป๊อปอัปฉลองได้แม้เพิ่งเปิดแอปครั้งแรกแต่ดาวสะสมพอจะขึ้นแรงค์แล้ว (เช่น กรณีทดสอบให้ดาวก่อนเปิดหน้าคนขับ)
+    const prevIdx = prevLevelId ? LEVELS.findIndex((l) => l.id === prevLevelId) : 0;
     const currentIdx = LEVELS.findIndex((l) => l.id === level.id);
     if (currentIdx > prevIdx) {
       setLevelUpInfo(level);
-      try { localStorage.setItem(storageKey, level.id); } catch (e) {}
     }
+    try { localStorage.setItem(storageKey, level.id); } catch (e) {}
   }, [currentDriverId, totalsByDriver]);
 
   const exitToLogin = () => { setRole(null); setCurrentDriverId(null); setView("home"); };
