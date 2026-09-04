@@ -342,7 +342,7 @@ function TopBarLight({ title, onBack, theme, onToggleTheme }) {
   );
 }
 
-function DriverHome({ driver, totals, todayTotal, setView, exit, theme, onToggleTheme }) {
+function DriverHome({ driver, totals, tokens, todayTotal, setView, exit, theme, onToggleTheme }) {
   return (
     <div className="p-4 pb-24 sts-fadein">
       <div className="flex items-center justify-between mb-5">
@@ -366,9 +366,15 @@ function DriverHome({ driver, totals, todayTotal, setView, exit, theme, onToggle
         <div className="mt-2 text-lg">{"⭐".repeat(Math.min(todayTotal, 10)) || "—"}</div>
       </div>
 
-      <div className="sts-card-l p-4 text-center mb-4">
-        <div className="text-xs text-gray-500 mb-1">🏆 ดาวสะสมทั้งหมด</div>
-        <div className="sts-mono sts-display" style={{ fontSize: 34 }}>{totals.total} ⭐</div>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="sts-card-l p-4 text-center">
+          <div className="text-xs text-gray-500 mb-1">🏆 ดาวสะสม</div>
+          <div className="sts-mono sts-display" style={{ fontSize: 26 }}>{totals.total} ⭐</div>
+        </div>
+        <button onClick={() => setView("reward")} className="sts-btn sts-card-l p-4 text-center" style={{ borderColor: "#F5B700" }}>
+          <div className="text-xs text-gray-500 mb-1">🪙 โทเคนแลกรางวัล</div>
+          <div className="sts-mono sts-display" style={{ fontSize: 26, color: "var(--accent)" }}>{tokens}</div>
+        </button>
       </div>
 
       <div className="mb-4"><LevelProgressLight total={totals.total} /></div>
@@ -468,12 +474,13 @@ function History({ logs, driverId, setView, theme, onToggleTheme }) {
   );
 }
 
-function RewardRedeemModal({ levelName, options, onChoose, onClose }) {
+function RewardRedeemModal({ levelName, options, tokens, onChoose, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "var(--modal-bg)" }} onClick={onClose}>
       <div className="sts-card-l-raised p-5 w-full" style={{ maxWidth: 380 }} onClick={(e) => e.stopPropagation()}>
         <div className="sts-display text-base mb-1 text-center">🎁 แลกรับรางวัล</div>
-        <div className="text-xs text-gray-500 mb-4 text-center">แรงค์ {levelName} — เลือกได้ 1 รางวัล (เลือกแล้วเปลี่ยนไม่ได้)</div>
+        <div className="text-xs text-gray-500 mb-1 text-center">ขั้น {levelName} — เลือกได้ 1 รางวัล</div>
+        <div className="text-xs text-center mb-4 px-2 leading-relaxed" style={{ color: "#E24545" }}>⚠️ แลกแล้วโทเคนที่มีอยู่ตอนนี้ ({tokens} โทเคน) จะถูกตัดกลับเป็น 0 ทันที เลือกแล้วเปลี่ยนไม่ได้</div>
         <div className="space-y-2">
           {options.map((opt, i) => (
             <button key={i} onClick={() => onChoose(opt)} className="sts-btn w-full text-left p-3 rounded-lg border text-sm" style={{ borderColor: "var(--modal-card-border)", background: "var(--modal-card-bg)", color: "var(--text-primary)" }}>
@@ -487,7 +494,7 @@ function RewardRedeemModal({ levelName, options, onChoose, onClose }) {
   );
 }
 
-function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRedeem, theme, onToggleTheme }) {
+function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptionHistory, onRedeem, theme, onToggleTheme }) {
   const total = totals.total;
   const level = getLevel(total);
   const next = getNextLevel(total);
@@ -495,14 +502,16 @@ function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRede
   const pct = Math.min(100, (cappedTotal / MAX_RANK_STARS) * 100);
   const [openLevel, setOpenLevel] = useState(null);
 
-  const myRedemptions = (redemptions && redemptions[driverId]) || {};
+  const historyList = Object.entries(myRedemptionHistory || {})
+    .map(([key, r]) => ({ ...r, key }))
+    .sort((a, b) => (a.redeemedAt < b.redeemedAt ? 1 : -1));
 
   return (
     <div className="pb-24 sts-fadein">
       <TopBarLight title="🏆 แรงค์ของฉัน" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
       <div className="p-4">
         <div className="sts-card-l-raised p-5 text-center mb-4">
-          <div className="text-xs text-gray-500 mb-1">คุณอยู่แรงค์</div>
+          <div className="text-xs text-gray-500 mb-1">คุณอยู่แรงค์ (ดาวสะสมตลอดปี)</div>
           <div className="sts-display text-2xl mb-2" style={{ color: "var(--accent)" }}>{level.name}</div>
           <div className="sts-mono sts-display text-3xl mb-3">{total} <span className="text-lg text-gray-400">/ {MAX_RANK_STARS} ⭐</span></div>
           <div className="sts-progress-track-l mb-2">
@@ -513,52 +522,74 @@ function RankView({ totals, setView, driverId, rewardConfig, redemptions, onRede
           ) : (
             <div className="text-sm" style={{ color: "var(--accent)" }}>🎉 คุณอยู่แรงค์สูงสุดแล้ว!</div>
           )}
+          <div className="text-[11px] text-gray-400 mt-3 leading-relaxed">ดาวสะสมนี้ไม่มีวันถูกตัด ใช้ตัดสิน "Safety Hero" ประจำปี</div>
         </div>
 
-        <div className="text-xs text-gray-500 mb-2 px-1">บันไดแรงค์ & รางวัล</div>
+        <div className="sts-card-l-raised p-5 text-center mb-4" style={{ borderColor: "#F5B700" }}>
+          <div className="text-xs text-gray-500 mb-1">🪙 โทเคนดาวสำหรับแลกรางวัล</div>
+          <div className="sts-mono sts-display text-3xl mb-1" style={{ color: "var(--accent)" }}>{tokens} โทเคน</div>
+          <div className="text-[11px] text-gray-400 leading-relaxed">ยังไม่อยากแลกก็เก็บสะสมต่อไปขั้นถัดไปได้ — พอกดแลกแล้วโทเคนจะตัดกลับเป็น 0 ทันที (ไม่กระทบดาวสะสมด้านบน)</div>
+        </div>
+
+        <div className="text-xs text-gray-500 mb-2 px-1">ขั้นแลกรางวัล (ใช้โทเคน)</div>
         <div className="space-y-3">
           {LEVELS.map((l) => {
             const tierThreshold = l.max === Infinity ? l.min : l.max;
-            const achieved = total >= tierThreshold;
+            const canRedeem = tokens >= tierThreshold;
+            const rankReached = total >= tierThreshold;
             const isCurrent = l.id === level.id;
-            const redeemed = myRedemptions[l.id];
             const options = (rewardConfig && rewardConfig[l.id]) || DEFAULT_REWARD_CONFIG[l.id] || [];
-            const starsToUnlock = tierThreshold - total;
+            const tokensToUnlock = tierThreshold - tokens;
             return (
               <div key={l.id} className="sts-card-l p-4" style={isCurrent ? { borderColor: "#F5B700" } : {}}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <Star size={20} style={{ color: achieved ? "var(--accent)" : "var(--muted-icon)" }} />
+                    <Star size={20} style={{ color: rankReached ? "var(--accent)" : "var(--muted-icon)" }} />
                     <div>
                       <div className="sts-display text-sm">{l.name}</div>
-                      <div className="text-xs text-gray-400 sts-mono">{l.min}{l.max === Infinity ? "+" : ` - ${l.max}`} ⭐</div>
+                      <div className="text-xs text-gray-400 sts-mono">ใช้ {tierThreshold} โทเคน</div>
                     </div>
                   </div>
-                  {!achieved && <span className="text-xs text-gray-400">อีก {starsToUnlock} ⭐</span>}
+                  {!canRedeem && <span className="text-xs text-gray-400">อีก {tokensToUnlock} โทเคน</span>}
                 </div>
 
-                {achieved && (
+                {canRedeem && (
                   <div className="mt-3 pt-3" style={{ borderTop: "1px dashed #EDE9DF" }}>
-                    {redeemed ? (
-                      <div className="text-xs" style={{ color: "#2FAE60" }}>✓ แลกแล้ว: {redeemed.choice}</div>
-                    ) : (
-                      <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
-                        🎁 แลกรับรางวัล
-                      </button>
-                    )}
+                    <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+                      🎁 แลกรับรางวัล
+                    </button>
                   </div>
                 )}
               </div>
             );
           })}
         </div>
+
+        {historyList.length > 0 && (
+          <div className="mt-6">
+            <div className="text-xs text-gray-500 mb-2 px-1">ประวัติการแลกรางวัลของฉัน</div>
+            <div className="space-y-2">
+              {historyList.map((r) => {
+                const lvl = LEVELS.find((l) => l.id === r.levelId);
+                return (
+                  <div key={r.key} className="sts-card-l p-3">
+                    <div className="text-sm">🎁 {r.choice}</div>
+                    <div className="text-xs text-gray-500">{lvl?.name || r.levelId} · ใช้ {r.tokensSpent || 0} โทเคน</div>
+                    <div className="text-xs text-gray-400 sts-mono">{r.redeemedAt ? new Date(r.redeemedAt).toLocaleDateString("th-TH") : ""}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {openLevel && (
         <RewardRedeemModal
           levelName={openLevel.name}
           options={(rewardConfig && rewardConfig[openLevel.id]) || DEFAULT_REWARD_CONFIG[openLevel.id] || []}
-          onChoose={(choice) => { onRedeem(driverId, openLevel.id, choice); setOpenLevel(null); }}
+          tokens={tokens}
+          onChoose={(choice) => { onRedeem(driverId, openLevel.id, choice, tokens); setOpenLevel(null); }}
           onClose={() => setOpenLevel(null)}
         />
       )}
@@ -926,6 +957,14 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
       })
     : sortedLogs;
 
+  // ยอดดาวสะสม (ถาวร) และโทเคนคงเหลือ (ใช้แลกได้) ของคนขับแต่ละคน สำหรับให้แอดมินดูสถานะ
+  const totalFor = (driverId) => logs.filter((l) => l.driverId === driverId).reduce((s, l) => s + l.amount, 0);
+  const tokensFor = (driverId) => {
+    const total = totalFor(driverId);
+    const spent = Object.values((redemptions && redemptions[driverId]) || {}).reduce((s, r) => s + (Number(r.tokensSpent) || 0), 0);
+    return Math.max(0, total - spent);
+  };
+
   return (
     <div className="min-h-screen sts-dark pb-10">
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" right={<button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button>} />
@@ -1047,11 +1086,11 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
           {(() => {
             const rows = [];
             Object.keys(redemptions || {}).forEach((driverId) => {
-              Object.keys(redemptions[driverId] || {}).forEach((levelId) => {
-                const r = redemptions[driverId][levelId];
+              Object.keys(redemptions[driverId] || {}).forEach((redemptionKey) => {
+                const r = redemptions[driverId][redemptionKey];
                 const driver = drivers.find((d) => d.id === driverId);
-                const level = LEVELS.find((l) => l.id === levelId);
-                rows.push({ driverId, levelId, driver, level, ...r });
+                const level = LEVELS.find((l) => l.id === r.levelId);
+                rows.push({ driverId, redemptionKey, driver, level, ...r });
               });
             });
             rows.sort((a, b) => (b.redeemedAt || "").localeCompare(a.redeemedAt || ""));
@@ -1066,7 +1105,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
                   <div className="text-xs text-gray-400">ทั้งหมด {rows.length} รายการ</div>
                   <button
                     onClick={() => {
-                      if (window.confirm("ยืนยันล้างคำขอแลกรางวัลทั้งหมด? คนขับทุกคนจะสามารถกดแลกใหม่ได้อีกครั้ง")) {
+                      if (window.confirm("ยืนยันล้างประวัติการแลกรางวัลทั้งหมด? โทเคนของทุกคนจะถูกคำนวณใหม่ (เท่ากับดาวสะสมปัจจุบันทั้งหมด)")) {
                         onResetRedemptions();
                       }
                     }}
@@ -1077,19 +1116,19 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
                   </button>
                 </div>
                 {rows.map((r) => (
-                  <div key={`${r.driverId}-${r.levelId}`} className="sts-card-d p-3 flex items-center justify-between">
+                  <div key={`${r.driverId}-${r.redemptionKey}`} className="sts-card-d p-3 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <span className="text-xl">{r.driver?.avatar || "👷"}</span>
                       <div>
                         <div className="text-sm">{r.driver?.name || r.driverId} <span className="text-gray-500 text-xs sts-mono">({r.driverId})</span></div>
-                        <div className="text-xs text-gray-500">แรงค์ {r.level?.name || r.levelId} · 🎁 {r.choice}</div>
+                        <div className="text-xs text-gray-500">ขั้น {r.level?.name || r.levelId} · 🎁 {r.choice} · ใช้ {r.tokensSpent || 0} โทเคน</div>
                         <div className="text-xs text-gray-600 sts-mono">{r.redeemedAt ? new Date(r.redeemedAt).toLocaleString("th-TH") : ""}</div>
                       </div>
                     </div>
                     <button
                       onClick={() => {
-                        if (window.confirm(`ยกเลิกการแลกรางวัลของ ${r.driver?.name || r.driverId}? คนคนนี้จะกดแลกใหม่ได้อีกครั้ง`)) {
-                          onCancelRedemption(r.driverId, r.levelId);
+                        if (window.confirm(`ยกเลิกการแลกรางวัลนี้ของ ${r.driver?.name || r.driverId}? โทเคน ${r.tokensSpent || 0} จะถูกคืนกลับให้คนขับ`)) {
+                          onCancelRedemption(r.driverId, r.redemptionKey);
                         }
                       }}
                       className="text-xs px-3 py-1 rounded-lg"
@@ -1189,6 +1228,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
                     <div className="text-sm">{d.name}</div>
                     <div className="text-xs text-gray-500 sts-mono">{d.id} · {d.plate}</div>
                     <div className="text-xs text-gray-500">{d.unit}</div>
+                    <div className="text-xs sts-mono mt-1"><span className="text-gray-400">⭐ {totalFor(d.id)}</span> <span style={{ color: "#FFC531" }}>🪙 {tokensFor(d.id)}</span></div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1598,14 +1638,14 @@ function App() {
     });
   };
 
-  function redeemReward(driverId, levelId, choice) {
+  function redeemReward(driverId, levelId, choice, tokensSpent) {
     if (!db) return;
-    db.ref(`redemptions/${driverId}/${levelId}`).set({ choice, redeemedAt: new Date().toISOString() });
+    db.ref(`redemptions/${driverId}`).push({ levelId, choice, redeemedAt: new Date().toISOString(), tokensSpent: Number(tokensSpent) || 0 });
   }
 
-  function cancelRedemption(driverId, levelId) {
+  function cancelRedemption(driverId, redemptionKey) {
     if (!db) return;
-    db.ref(`redemptions/${driverId}/${levelId}`).remove();
+    db.ref(`redemptions/${driverId}/${redemptionKey}`).remove();
   }
 
   function resetAllRedemptions() {
@@ -1661,6 +1701,18 @@ function App() {
     return map;
   }, [logs, drivers]);
 
+  // โทเคนดาวสำหรับแลกรางวัล = ดาวสะสมทั้งหมด (ถาวร) ลบด้วยโทเคนที่เคยใช้แลกไปแล้ว
+  // ดาวสะสม (totalsByDriver) ไม่ถูกตัดเลย ใช้ตัดสิน Safety Hero ประจำปีแยกต่างหาก
+  const tokensByDriver = useMemo(() => {
+    const map = {};
+    drivers.forEach((d) => {
+      const total = (totalsByDriver[d.id] || { total: 0 }).total;
+      const mySpent = Object.values(redemptions[d.id] || {}).reduce((s, r) => s + (Number(r.tokensSpent) || 0), 0);
+      map[d.id] = Math.max(0, total - mySpent);
+    });
+    return map;
+  }, [drivers, totalsByDriver, redemptions]);
+
   const leaderboard = useMemo(() => {
     return drivers.map((d) => ({ ...d, total: (totalsByDriver[d.id] || { total: 0 }).total })).sort((a, b) => b.total - a.total);
   }, [drivers, totalsByDriver]);
@@ -1703,13 +1755,14 @@ function App() {
   if (!driver) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
   const totals = totalsByDriver[currentDriverId] || { total: 0, ppe: 0, safety: 0, activity: 0, quiz: 0, special: 0 };
   const todayTotal = todayByDriver[currentDriverId] || 0;
+  const tokens = tokensByDriver[currentDriverId] || 0;
 
   return (
     <div className={`sts-light ${themeClass}`} style={{ maxWidth: 480, margin: "0 auto", position: "relative" }}>
-      {view === "home" && <DriverHome driver={driver} totals={totals} todayTotal={todayTotal} setView={setView} exit={exitToLogin} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "home" && <DriverHome driver={driver} totals={totals} tokens={tokens} todayTotal={todayTotal} setView={setView} exit={exitToLogin} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "mystar" && <MyStar totals={totals} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
-      {view === "reward" && <RankView totals={totals} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} redemptions={redemptions} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "reward" && <RankView totals={totals} tokens={tokens} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} myRedemptionHistory={redemptions[currentDriverId] || {}} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
       <BottomNav view={view} setView={setView} />
       {levelUpInfo && <LevelUpCelebration level={levelUpInfo} onClose={() => setLevelUpInfo(null)} />}
     </div>
