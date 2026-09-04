@@ -257,6 +257,7 @@ const firebaseConfig = {
   storageBucket: "driver-star-score.firebasestorage.app",
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
+
 };
 
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
@@ -764,7 +765,60 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions }) {
+function EditLogModal({ log, drivers, onSave, onDelete, onClose }) {
+  const [driverId, setDriverId] = useState(log.driverId);
+  const [type, setType] = useState(log.type);
+  const [amount, setAmount] = useState(String(log.amount));
+  const [reason, setReason] = useState(log.reason || "");
+  const [date, setDate] = useState(log.date || todayStr());
+
+  const save = () => {
+    const n = Number(amount);
+    if (!driverId || !n || n <= 0) return;
+    onSave(log.id, { driverId, type, amount: n, reason, date });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
+      <div className="sts-card-d-raised p-5 w-full max-h-[85vh] overflow-y-auto sts-scroll" style={{ maxWidth: 380, background: "#15181C" }} onClick={(e) => e.stopPropagation()}>
+        <div className="sts-display text-sm mb-3">✏️ แก้ไขรายการดาว</div>
+
+        <div className="text-xs text-gray-400 mb-1">คนขับ</div>
+        <div className="mb-3"><DriverPickerDark drivers={drivers} selectedId={driverId} onSelect={setDriverId} /></div>
+
+        <div className="text-xs text-gray-400 mb-1">ประเภทดาว</div>
+        <select value={type} onChange={(e) => setType(e.target.value)} className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-3" style={{ color: "#F2F3F4" }}>
+          {STAR_ORDER.map((k) => <option key={k} value={k}>{STAR_TYPES[k].emoji} {STAR_TYPES[k].label}</option>)}
+        </select>
+
+        <div className="text-xs text-gray-400 mb-1">จำนวนดาว</div>
+        <input type="number" min="1" value={amount} onChange={(e) => setAmount(e.target.value)} className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-3" style={{ color: "#F2F3F4" }} />
+
+        <div className="text-xs text-gray-400 mb-1">เหตุผล</div>
+        <input value={reason} onChange={(e) => setReason(e.target.value)} className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-3" style={{ color: "#F2F3F4" }} />
+
+        <div className="text-xs text-gray-400 mb-1">วันที่</div>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="sts-card-d w-full px-3 py-2 bg-transparent text-sm mb-4" style={{ color: "#F2F3F4" }} />
+
+        <button onClick={save} className="sts-btn w-full py-2 rounded-lg text-sm sts-display mb-2" style={{ background: "#FFC531", color: "#0B0D0F" }}>บันทึกการแก้ไข</button>
+        <button
+          onClick={() => {
+            if (window.confirm("ยืนยันลบรายการดาวนี้? การกระทำนี้ย้อนกลับไม่ได้ และจะกระทบยอดสะสมของคนขับคนนี้ทันที")) {
+              onDelete(log.id);
+            }
+          }}
+          className="sts-btn w-full py-2 rounded-lg text-sm sts-display mb-2"
+          style={{ background: "#5A2323", color: "#FFD9D9" }}
+        >
+          🗑️ ลบรายการนี้
+        </button>
+        <button onClick={onClose} className="text-xs text-gray-500 w-full text-center">ยกเลิก</button>
+      </div>
+    </div>
+  );
+}
+
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions, onUpdateLog, onDeleteLog }) {
   const [tab, setTab] = useState("share");
   const [giveSearch, setGiveSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -777,6 +831,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
   const [form, setForm] = useState({ id: "", name: "", plate: "", unit: "" });
   const [editingId, setEditingId] = useState(null);
   const [showForm, setShowForm] = useState(false);
+  const [editingLog, setEditingLog] = useState(null);
 
   const openNewForm = () => { setForm({ id: "", name: "", plate: "", unit: "" }); setEditingId(null); setShowForm(true); };
   const openEditForm = (d) => { setForm({ id: d.id, name: d.name, plate: d.plate || "", unit: d.unit || "" }); setEditingId(d.id); setShowForm(true); };
@@ -1042,6 +1097,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
 
       {tab === "logs" && (
         <div className="p-4 space-y-2 sts-fadein">
+          <div className="text-xs text-gray-500 mb-1">แสดง 15 รายการล่าสุด · กดไอคอนดินสอเพื่อแก้ไขหรือลบรายการที่ให้ผิด</div>
           {recentLogs.map((l) => {
             const d = drivers.find((x) => x.id === l.driverId);
             const t = STAR_TYPES[l.type];
@@ -1054,7 +1110,10 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
                     <div className="text-xs text-gray-500 sts-mono">{l.date}</div>
                   </div>
                 </div>
-                <span className="sts-mono" style={{ color: t.color }}>+{l.amount}</span>
+                <div className="flex items-center gap-3">
+                  <span className="sts-mono" style={{ color: t.color }}>+{l.amount}</span>
+                  <button onClick={() => setEditingLog(l)} className="text-gray-400 hover:text-white"><Pencil size={15} /></button>
+                </div>
               </div>
             );
           })}
@@ -1145,6 +1204,16 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onResetStars, rew
             <button onClick={() => setRewardDraft(null)} className="text-xs text-gray-500 mt-3 w-full text-center">ยกเลิก</button>
           </div>
         </div>
+      )}
+
+      {editingLog && (
+        <EditLogModal
+          log={editingLog}
+          drivers={drivers}
+          onSave={(logId, updates) => { onUpdateLog(logId, updates); setEditingLog(null); }}
+          onDelete={(logId) => { onDeleteLog(logId); setEditingLog(null); }}
+          onClose={() => setEditingLog(null)}
+        />
       )}
     </div>
   );
@@ -1396,6 +1465,38 @@ function LoadingScreen() {
   );
 }
 
+/* ป๊อปอัปฉลองตอนคนขับเลื่อนแรงค์ใหม่ (ฝั่งคนขับ) */
+function LevelUpCelebration({ level, onClose }) {
+  const confetti = useMemo(
+    () =>
+      Array.from({ length: 30 }, (_, i) => ({
+        id: i,
+        left: Math.random() * 100,
+        delay: Math.random() * 0.4,
+        dur: 1.4 + Math.random() * 1.1,
+        emoji: ["⭐", "✨", "🎉", "🏆"][Math.floor(Math.random() * 4)],
+      })),
+    []
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "rgba(20,18,10,0.72)" }} onClick={onClose}>
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        {confetti.map((c) => (
+          <span key={c.id} className="sts-confetti" style={{ left: `${c.left}%`, animationDuration: `${c.dur}s`, animationDelay: `${c.delay}s` }}>{c.emoji}</span>
+        ))}
+      </div>
+      <div className="sts-pop sts-card-l-raised p-6 text-center w-full" style={{ maxWidth: 320 }} onClick={(e) => e.stopPropagation()}>
+        <div className="text-6xl mb-3">🏆</div>
+        <div className="text-sm text-gray-500 mb-1">ยินดีด้วย! คุณเลื่อนขึ้นแรงค์</div>
+        <div className="sts-display text-2xl mb-4" style={{ color: "var(--accent)" }}>{level.name}</div>
+        <button onClick={onClose} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "linear-gradient(90deg,#F5B700,#EA7C1F)", color: "#20242B" }}>
+          🎉 เยี่ยมเลย!
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [drivers, setDriversRaw] = useState([]);
   const [logs, setLogsRaw] = useState([]);
@@ -1510,6 +1611,14 @@ function App() {
     if (db) db.ref("logs").push(entry);
   }
 
+  function updateLog(logId, updates) {
+    if (db) db.ref(`logs/${logId}`).update(updates);
+  }
+
+  function deleteLog(logId) {
+    if (db) db.ref(`logs/${logId}`).remove();
+  }
+
   function resetAllStars() {
     if (db) db.ref("logs").set({});
   }
@@ -1540,6 +1649,27 @@ function App() {
 
   const todayTotalAll = useMemo(() => logs.filter((l) => l.date === todayStr()).reduce((s, l) => s + l.amount, 0), [logs]);
 
+  // ตรวจจับตอนคนขับเลื่อนแรงค์ใหม่ เพื่อโชว์ป๊อปอัปฉลอง (เทียบกับแรงค์ล่าสุดที่จำไว้ในเครื่อง)
+  const [levelUpInfo, setLevelUpInfo] = useState(null);
+  useEffect(() => {
+    if (!currentDriverId) return;
+    const total = (totalsByDriver[currentDriverId] || { total: 0 }).total;
+    const level = getLevel(total);
+    const storageKey = `sts_level_${currentDriverId}`;
+    let prevLevelId = null;
+    try { prevLevelId = localStorage.getItem(storageKey); } catch (e) {}
+    if (prevLevelId === null) {
+      try { localStorage.setItem(storageKey, level.id); } catch (e) {}
+      return;
+    }
+    const prevIdx = LEVELS.findIndex((l) => l.id === prevLevelId);
+    const currentIdx = LEVELS.findIndex((l) => l.id === level.id);
+    if (currentIdx > prevIdx) {
+      setLevelUpInfo(level);
+      try { localStorage.setItem(storageKey, level.id); } catch (e) {}
+    }
+  }, [currentDriverId, totalsByDriver]);
+
   const exitToLogin = () => { setRole(null); setCurrentDriverId(null); setView("home"); };
 
   if (!isFirebaseConfigured) return <FirebaseSetupNeeded />;
@@ -1549,7 +1679,7 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={exitToLogin} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} />;
 
@@ -1565,6 +1695,7 @@ function App() {
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "reward" && <RankView totals={totals} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} redemptions={redemptions} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
       <BottomNav view={view} setView={setView} />
+      {levelUpInfo && <LevelUpCelebration level={levelUpInfo} onClose={() => setLevelUpInfo(null)} />}
     </div>
   );
 }
