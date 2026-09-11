@@ -188,6 +188,33 @@ function parseDriversFromWorkbook(workbook, existingIds) {
     });
 }
 
+/* อ่านไฟล์รายชื่อผู้เข้าร่วมกิจกรรม (เช่น ใบเซ็นชื่อ) แล้วจับคู่กับคนขับที่มีอยู่แล้วด้วยชื่อหรือทะเบียน */
+function parseAttendanceFromWorkbook(workbook, drivers) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+  if (rows.length === 0) return { matchedIds: [], unmatchedNames: [] };
+  const headers = Object.keys(rows[0]);
+  const nameKey = matchHeader(headers, ["ชื่อ", "name"]);
+  const plateKey = matchHeader(headers, ["ทะเบียน", "plate"]);
+
+  const matchedIds = [];
+  const unmatchedNames = [];
+  rows.forEach((r) => {
+    const nameVal = nameKey ? String(r[nameKey]).trim() : "";
+    const plateVal = plateKey ? String(r[plateKey]).trim() : "";
+    if (!nameVal && !plateVal) return;
+    const nameQ = normalizeText(nameVal);
+    const plateQ = normalizeText(plateVal);
+    const found = drivers.find((d) => (plateQ && normalizeText(d.plate) === plateQ) || (nameQ && normalizeText(d.name) === nameQ));
+    if (found) {
+      if (!matchedIds.includes(found.id)) matchedIds.push(found.id);
+    } else {
+      unmatchedNames.push(nameVal || plateVal);
+    }
+  });
+  return { matchedIds, unmatchedNames };
+}
+
 function downloadDriverTemplate() {
   const wsData = [
     ["ชื่อ", "ทะเบียน", "สังกัด"],
@@ -502,6 +529,7 @@ function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptio
   const cappedTotal = Math.min(total, MAX_RANK_STARS);
   const pct = Math.min(100, (cappedTotal / MAX_RANK_STARS) * 100);
   const [openLevel, setOpenLevel] = useState(null);
+  const [redeemedSuccess, setRedeemedSuccess] = useState(null); // { choice, levelName }
 
   const historyList = Object.entries(myRedemptionHistory || {})
     .map(([key, r]) => ({ ...r, key }))
@@ -590,9 +618,28 @@ function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptio
           levelName={openLevel.name}
           options={(rewardConfig && rewardConfig[openLevel.id]) || DEFAULT_REWARD_CONFIG[openLevel.id] || []}
           tokens={tokens}
-          onChoose={(choice) => { onRedeem(driverId, openLevel.id, choice, tokens); setOpenLevel(null); }}
+          onChoose={(choice) => {
+            onRedeem(driverId, openLevel.id, choice, tokens);
+            setRedeemedSuccess({ choice, levelName: openLevel.name });
+            setOpenLevel(null);
+          }}
           onClose={() => setOpenLevel(null)}
         />
+      )}
+
+      {redeemedSuccess && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6" style={{ background: "var(--modal-bg)" }} onClick={() => setRedeemedSuccess(null)}>
+          <div className="sts-pop sts-card-l-raised p-6 text-center w-full" style={{ maxWidth: 320 }} onClick={(e) => e.stopPropagation()}>
+            <div className="text-6xl mb-3">🎉</div>
+            <div className="sts-display text-lg mb-1">แลกรางวัลสำเร็จ!</div>
+            <div className="text-xs text-gray-500 mb-2">ขั้น {redeemedSuccess.levelName}</div>
+            <div className="sts-display text-base mb-4" style={{ color: "var(--accent)" }}>🎁 {redeemedSuccess.choice}</div>
+            <div className="text-xs text-gray-400 mb-4 leading-relaxed">โทเคนของคุณถูกตัดกลับเป็น 0 แล้ว แจ้งหัวหน้างานเพื่อรับของรางวัลได้เลย</div>
+            <button onClick={() => setRedeemedSuccess(null)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "linear-gradient(90deg,#F5B700,#EA7C1F)", color: "#20242B" }}>
+              🎉 เยี่ยมเลย!
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -861,6 +908,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
   const givingRef = useRef(false); // กันกดซ้ำ/แตะรัว ไม่ให้ยิงคำสั่งให้ดาวซ้ำก่อนจอทันอัปเดต
 
   const fileInputRef = useRef(null);
+  const questImportRef = useRef(null);
   const [replaceAll, setReplaceAll] = useState(false);
   const [importMsg, setImportMsg] = useState("");
   const [form, setForm] = useState({ id: "", name: "", plate: "", unit: "" });
@@ -868,6 +916,8 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
   const [showForm, setShowForm] = useState(false);
   const [editingLog, setEditingLog] = useState(null);
   const [logSearch, setLogSearch] = useState("");
+  const [driverSearch, setDriverSearch] = useState("");
+  const [questImportMsg, setQuestImportMsg] = useState("");
 
   const openNewForm = () => { setForm({ id: "", name: "", plate: "", unit: "" }); setEditingId(null); setShowForm(true); };
   const openEditForm = (d) => { setForm({ id: d.id, name: d.name, plate: d.plate || "", unit: d.unit || "" }); setEditingId(d.id); setShowForm(true); };
@@ -919,6 +969,31 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
     reader.readAsArrayBuffer(file);
   };
 
+  const handleQuestImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: "array" });
+        const { matchedIds, unmatchedNames } = parseAttendanceFromWorkbook(wb, drivers);
+        setSelectedIds(matchedIds);
+        if (matchedIds.length === 0) {
+          setQuestImportMsg("ไม่พบชื่อที่ตรงกับรายชื่อคนขับในระบบเลย กรุณาตรวจสอบหัวคอลัมน์ (ชื่อ / ทะเบียน)");
+        } else if (unmatchedNames.length > 0) {
+          setQuestImportMsg(`เลือกให้อัตโนมัติ ${matchedIds.length} คน · หาไม่พบ ${unmatchedNames.length} รายชื่อ: ${unmatchedNames.slice(0, 5).join(", ")}${unmatchedNames.length > 5 ? " ..." : ""}`);
+        } else {
+          setQuestImportMsg(`เลือกให้อัตโนมัติครบทั้งหมด ${matchedIds.length} คน`);
+        }
+      } catch (err) {
+        setQuestImportMsg("อ่านไฟล์ไม่สำเร็จ กรุณาตรวจสอบว่าเป็นไฟล์ .xlsx หรือ .csv ที่ถูกต้อง");
+      }
+      if (questImportRef.current) questImportRef.current.value = "";
+      setTimeout(() => setQuestImportMsg(""), 6000);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
   const giveQuery = normalizeText(giveSearch);
   const filteredForGiving = giveQuery
     ? drivers.filter((d) => normalizeText(d.name).includes(giveQuery) || normalizeText(d.plate).includes(giveQuery))
@@ -927,13 +1002,18 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
   const toggleSelect = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
-  const selectAllFiltered = () => setSelectedIds(filteredForGiving.map((d) => d.id));
   const clearSelection = () => setSelectedIds([]);
 
   const [showQuestForm, setShowQuestForm] = useState(false);
   const [questDraft, setQuestDraft] = useState({ name: "", type: STAR_ORDER[0], amount: "1" });
   const [editingQuestId, setEditingQuestId] = useState(null);
   const [activeQuestId, setActiveQuestId] = useState(null);
+
+  // คนที่ได้ดาวจากเควสที่กำลังเปิดอยู่ไปแล้ว "วันนี้" กันเลือกซ้ำโดยไม่ตั้งใจ (เช่น ตอบคำถามในที่ประชุมแล้วโดนติ๊กซ้ำ)
+  const alreadyGivenTodayIds = new Set(
+    logs.filter((l) => l.questId === activeQuestId && l.date === todayStr()).map((l) => l.driverId)
+  );
+  const selectAllFiltered = () => setSelectedIds(filteredForGiving.filter((d) => !alreadyGivenTodayIds.has(d.id)).map((d) => d.id));
 
   const openNewQuestForm = () => { setQuestDraft({ name: "", type: STAR_ORDER[0], amount: "1" }); setEditingQuestId(null); setShowQuestForm(true); };
   const openEditQuestForm = (q) => { setQuestDraft({ name: q.name, type: q.type, amount: String(q.amount) }); setEditingQuestId(q.id); setShowQuestForm(true); };
@@ -960,8 +1040,13 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
   const giveQuest = () => {
     const quest = quests.find((q) => q.id === activeQuestId);
     if (!quest || selectedIds.length === 0 || givingRef.current) return;
+    const dupCount = selectedIds.filter((id) => alreadyGivenTodayIds.has(id)).length;
+    if (dupCount > 0) {
+      const ok = window.confirm(`มี ${dupCount} คนที่ได้ดาวจากเควส "${quest.name}" ไปแล้ววันนี้ ต้องการให้ซ้ำอีกรอบใช่หรือไม่?`);
+      if (!ok) return;
+    }
     givingRef.current = true;
-    selectedIds.forEach((id) => addStar(id, quest.type, quest.amount, quest.name));
+    selectedIds.forEach((id) => addStar(id, quest.type, quest.amount, quest.name, quest.id));
     setFlash(quest.id);
     setTimeout(() => {
       setFlash(null);
@@ -970,6 +1055,29 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
       clearSelection();
     }, 1200);
   };
+
+  const endQuestActivity = (questId) => {
+    if (window.confirm("ยืนยันเสร็จสิ้นกิจกรรมนี้? กิจกรรมจะย้ายไปเก็บในประวัติ และจะมอบดาวเพิ่มจากกิจกรรมนี้ไม่ได้อีก")) {
+      onUpdateQuest(questId, { closedAt: new Date().toISOString() });
+      if (activeQuestId === questId) closeQuestGiver();
+    }
+  };
+  const reopenQuestActivity = (questId) => {
+    onUpdateQuest(questId, { closedAt: null });
+  };
+
+  // สถิติของแต่ละเควส: มีกี่คนได้ดาวไปแล้ว (นับไม่ซ้ำคน) และรวมดาวที่มอบไปทั้งหมด
+  const questStatsById = {};
+  quests.forEach((q) => {
+    const questLogs = logs.filter((l) => l.questId === q.id);
+    questStatsById[q.id] = {
+      recipients: new Set(questLogs.map((l) => l.driverId)).size,
+      totalStars: questLogs.reduce((s, l) => s + l.amount, 0),
+      timesGiven: questLogs.length,
+    };
+  });
+  const activeQuests = quests.filter((q) => !q.closedAt);
+  const closedQuests = [...quests.filter((q) => q.closedAt)].sort((a, b) => (a.closedAt < b.closedAt ? 1 : -1));
 
   const [rewardDraft, setRewardDraft] = useState(null); // { levelId, values: [a,b,c] }
   const openRewardEdit = (levelId) => {
@@ -1000,6 +1108,42 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
     const total = totalFor(driverId);
     const spent = Object.values((redemptions && redemptions[driverId]) || {}).reduce((s, r) => s + (Number(r.tokensSpent) || 0), 0);
     return Math.max(0, total - spent);
+  };
+  const breakdownFor = (driverId) => {
+    const t = {};
+    STAR_ORDER.forEach((k) => (t[k] = 0));
+    logs.filter((l) => l.driverId === driverId).forEach((l) => { t[l.type] = (t[l.type] || 0) + l.amount; });
+    return t;
+  };
+
+  const driverQuery = normalizeText(driverSearch);
+  const filteredDrivers = driverQuery
+    ? drivers.filter((d) => normalizeText(d.name).includes(driverQuery) || normalizeText(d.plate).includes(driverQuery) || normalizeText(d.unit || "").includes(driverQuery))
+    : drivers;
+
+  const rankedDrivers = () =>
+    [...drivers]
+      .map((d) => ({ ...d, total: totalFor(d.id), ...breakdownFor(d.id) }))
+      .sort((a, b) => b.total - a.total);
+
+  const exportDriversExcel = () => {
+    const ranked = rankedDrivers();
+    const header = ["อันดับ", "ชื่อ-สกุล", "ทะเบียนรถ", "สังกัด", "ดาว PPE", "ดาวขับขี่ปลอดภัย", "ดาวกิจกรรม", "ดาวตอบคำถาม", "ดาวพิเศษ", "ดาวสะสมรวม", "โทเคนคงเหลือ"];
+    const rows = ranked.map((d, i) => [i + 1, d.name, d.plate, d.unit, d.ppe, d.safety, d.activity, d.quiz, d.special, d.total, tokensFor(d.id)]);
+    const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ดาวสะสมคนขับ");
+    XLSX.writeFile(wb, `SmartTruckStar_ดาวสะสม_${todayStr()}.xlsx`);
+  };
+
+  const exportSafetyHero = () => {
+    const top10 = rankedDrivers().slice(0, 10);
+    const header = ["อันดับ", "ชื่อ-สกุล", "ทะเบียนรถ", "สังกัด", "ดาวสะสมรวม"];
+    const rows = top10.map((d, i) => [i + 1, d.name, d.plate, d.unit, d.total]);
+    const ws = XLSX.utils.aoa_to_sheet([["🏆 Safety Hero Top 10 — SMART TRUCK STAR"], [`สรุป ณ วันที่ ${todayStr()}`], [], header, ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Safety Hero Top 10");
+    XLSX.writeFile(wb, `SmartTruckStar_SafetyHero_${todayStr()}.xlsx`);
   };
 
   const themeClass = theme === "night" ? "theme-night" : "theme-day";
@@ -1047,16 +1191,17 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
               <Plus size={14} /> สร้างเควสใหม่
             </button>
           </div>
-          <div className="text-xs text-gray-400 leading-relaxed -mt-3">สร้างเควสไว้ล่วงหน้า ตั้งชื่อ เลือกสีดาว และกำหนดจำนวนดาวเอง พอมีคนขับทำสำเร็จ กดมอบดาวให้ได้ทีละหลายคนเลย</div>
+          <div className="text-xs text-gray-400 leading-relaxed -mt-3">สร้างเควสไว้ล่วงหน้า ตั้งชื่อ เลือกสีดาว และกำหนดจำนวนดาวเอง พอมีคนขับทำสำเร็จ กดมอบดาวให้ได้ทีละหลายคนเลย เสร็จกิจกรรมแล้วกด "เสร็จสิ้นกิจกรรม" เพื่อเก็บเป็นประวัติ</div>
 
-          {quests.length === 0 && (
-            <div className="sts-card-l p-6 text-center text-sm text-gray-500">ยังไม่มีเควส กด "สร้างเควสใหม่" เพื่อเริ่มต้น</div>
+          {activeQuests.length === 0 && (
+            <div className="sts-card-l p-6 text-center text-sm text-gray-500">ยังไม่มีเควสที่เปิดอยู่ กด "สร้างเควสใหม่" เพื่อเริ่มต้น</div>
           )}
 
           <div className="space-y-2">
-            {quests.map((q) => {
+            {activeQuests.map((q) => {
               const t = STAR_TYPES[q.type] || STAR_TYPES[STAR_ORDER[0]];
               const isOpen = activeQuestId === q.id;
+              const stats = questStatsById[q.id] || { recipients: 0, totalStars: 0 };
               return (
                 <div key={q.id} className="sts-card-l p-4" style={isOpen ? { borderColor: t.color } : {}}>
                   <div className="flex items-center justify-between">
@@ -1065,6 +1210,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                       <div>
                         <div className="text-sm sts-display">{q.name}</div>
                         <div className="text-xs sts-mono" style={{ color: t.color }}>{t.label} · +{q.amount} ดาว</div>
+                        {stats.recipients > 0 && <div className="text-xs text-gray-400 mt-0.5">👥 ได้ดาวแล้ว {stats.recipients} คน · รวม {stats.totalStars} ดาว</div>}
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1074,11 +1220,24 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                   </div>
 
                   {!isOpen ? (
-                    <button onClick={() => openQuestGiver(q.id)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display mt-3" style={{ background: t.color, color: "#0B0D0F" }}>
-                      ✅ ทำสำเร็จ — มอบดาวให้
-                    </button>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => openQuestGiver(q.id)} className="sts-btn flex-1 py-2 rounded-lg text-sm sts-display" style={{ background: t.color, color: "#0B0D0F" }}>
+                        ✅ ทำสำเร็จ — มอบดาวให้
+                      </button>
+                      <button onClick={() => endQuestActivity(q.id)} className="sts-btn sts-card-l px-3 py-2 rounded-lg text-xs whitespace-nowrap">
+                        🏁 เสร็จสิ้นกิจกรรม
+                      </button>
+                    </div>
                   ) : (
                     <div className="mt-3 pt-3" style={{ borderTop: "1px dashed var(--surface-border)" }}>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs text-gray-400">เลือกทีละคน หรือนำเข้ารายชื่อจากไฟล์เซ็นชื่อ</span>
+                        <button onClick={() => questImportRef.current?.click()} className="text-xs flex items-center gap-1" style={{ color: t.color }}>
+                          <Upload size={12} /> นำเข้า Excel
+                        </button>
+                        <input ref={questImportRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleQuestImport} className="hidden" />
+                      </div>
+                      {questImportMsg && <div className="text-xs mb-2 leading-relaxed" style={{ color: t.color }}>{questImportMsg}</div>}
                       <input
                         value={giveSearch}
                         onChange={(e) => setGiveSearch(e.target.value)}
@@ -1096,12 +1255,13 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                       <div className="space-y-1 max-h-56 overflow-y-auto sts-scroll mb-3">
                         {filteredForGiving.map((d) => {
                           const checked = selectedIds.includes(d.id);
+                          const gotToday = alreadyGivenTodayIds.has(d.id);
                           return (
                             <button
                               key={d.id}
                               onClick={() => toggleSelect(d.id)}
                               className="sts-btn w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left"
-                              style={{ background: checked ? "rgba(255,197,49,0.12)" : "var(--input-bg)", border: checked ? `1px solid ${t.color}` : "1px solid transparent", color: "var(--text-primary)" }}
+                              style={{ background: checked ? "rgba(255,197,49,0.12)" : "var(--input-bg)", border: checked ? `1px solid ${t.color}` : "1px solid transparent", color: "var(--text-primary)", opacity: gotToday && !checked ? 0.55 : 1 }}
                             >
                               <span style={{
                                 width: 18, height: 18, borderRadius: 4, flexShrink: 0,
@@ -1114,6 +1274,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                                 <div className="text-sm">{d.name}</div>
                                 <div className="text-xs text-gray-500 sts-mono">{d.plate}</div>
                               </div>
+                              {gotToday && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,107,107,0.15)", color: "#FF6B6B" }}>✓ ได้แล้ววันนี้</span>}
                             </button>
                           );
                         })}
@@ -1132,6 +1293,37 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
               );
             })}
           </div>
+
+          {closedQuests.length > 0 && (
+            <div className="pt-2">
+              <div className="text-xs text-gray-500 mb-2 px-1">📜 ประวัติกิจกรรมที่เสร็จสิ้นแล้ว ({closedQuests.length})</div>
+              <div className="space-y-2">
+                {closedQuests.map((q) => {
+                  const t = STAR_TYPES[q.type] || STAR_TYPES[STAR_ORDER[0]];
+                  const stats = questStatsById[q.id] || { recipients: 0, totalStars: 0 };
+                  return (
+                    <div key={q.id} className="sts-card-l p-4" style={{ opacity: 0.85 }}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">{t.emoji}</span>
+                          <div>
+                            <div className="text-sm sts-display">{q.name}</div>
+                            <div className="text-xs sts-mono" style={{ color: t.color }}>{t.label} · +{q.amount} ดาว</div>
+                            <div className="text-xs text-gray-400 mt-0.5">👥 ได้ดาวไป {stats.recipients} คน · รวม {stats.totalStars} ดาว</div>
+                            <div className="text-xs text-gray-500 sts-mono mt-0.5">ปิดกิจกรรมเมื่อ {q.closedAt ? new Date(q.closedAt).toLocaleDateString("th-TH") : ""}</div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => reopenQuestActivity(q.id)} className="text-xs px-2 py-1 rounded-lg" style={{ background: "var(--input-bg)", color: "var(--text-primary)" }}>เปิดใช้อีกครั้ง</button>
+                          <button onClick={() => removeQuest(q.id)} className="text-gray-400 hover:text-red-400"><Trash2 size={15} /></button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1272,6 +1464,19 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
             {importMsg && <div className="text-xs mt-3" style={{ color: "#FFC531" }}>{importMsg}</div>}
           </div>
 
+          <div className="sts-card-l p-4">
+            <div className="text-sm sts-display mb-2">📊 Export ข้อมูลดาวสะสม</div>
+            <div className="text-xs text-gray-400 mb-3">ดาวน์โหลดเป็นไฟล์ Excel เพื่อทำรายงานหรือประกาศผล</div>
+            <div className="flex gap-2 flex-wrap">
+              <button onClick={exportDriversExcel} className="sts-btn px-4 py-2 rounded-lg text-sm flex items-center gap-2 sts-card-l">
+                <Download size={16} /> Export ดาวสะสมทุกคน
+              </button>
+              <button onClick={exportSafetyHero} className="sts-btn px-4 py-2 rounded-lg text-sm flex items-center gap-2" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+                <Download size={16} /> 🏆 Export Safety Hero Top 10
+              </button>
+            </div>
+          </div>
+
           {!showForm && (
             <button onClick={openNewForm} className="sts-btn sts-card-l w-full p-3 flex items-center justify-center gap-2 text-sm" style={{ color: "#FFC531" }}>
               <Plus size={16} /> เพิ่มคนขับด้วยตนเอง
@@ -1293,8 +1498,18 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
             </div>
           )}
 
+          <input
+            value={driverSearch}
+            onChange={(e) => setDriverSearch(e.target.value)}
+            placeholder="ค้นหาด้วยชื่อ ทะเบียน หรือสังกัด..."
+            className="sts-card-l w-full px-3 py-2 bg-transparent text-sm"
+            style={{ color: "var(--text-primary)" }}
+          />
+          <div className="text-xs text-gray-500 -mt-2 px-1">ทั้งหมด {filteredDrivers.length} คน</div>
+
           <div className="space-y-2">
-            {drivers.map((d) => (
+            {filteredDrivers.length === 0 && <div className="text-center text-gray-500 text-sm py-8">ไม่พบรายชื่อ</div>}
+            {filteredDrivers.map((d) => (
               <div key={d.id} className="sts-card-l p-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xl">{DRIVER_AVATAR}</span>
@@ -1888,8 +2103,9 @@ function App() {
     });
   };
 
-  function addStar(driverId, type, amount, reason) {
+  function addStar(driverId, type, amount, reason, questId) {
     const entry = { driverId, type, amount, reason, date: todayStr(), givenBy: "หัวหน้างาน" };
+    if (questId) entry.questId = questId;
     if (db) db.ref("logs").push(entry);
   }
 
