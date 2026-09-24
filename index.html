@@ -5,6 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>SMART TRUCK STAR · TMT Steel</title>
 
+<!-- PWA: ติดตั้งเป็นแอปบนมือถือได้ (Add to Home Screen) -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#FFC531" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Truck Star" />
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
@@ -582,11 +592,32 @@ function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptio
                   {!canRedeem && <span className="text-xs text-gray-400">อีก {tokensToUnlock} โทเคน</span>}
                 </div>
 
-                {canRedeem && (
+                {options.length > 0 && (
                   <div className="mt-3 pt-3" style={{ borderTop: "1px dashed #EDE9DF" }}>
-                    <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
-                      🎁 แลกรับรางวัล
-                    </button>
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {options.map((opt, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[11px] px-2 py-1 rounded-full"
+                          style={
+                            canRedeem
+                              ? { background: "#FFF6DC", color: "#8A5A00", border: "1px solid #FFE39A" }
+                              : { background: "var(--surface)", color: "var(--text-primary)", opacity: 0.55, border: "1px solid var(--surface-border)" }
+                          }
+                        >
+                          🎁 {opt}
+                        </span>
+                      ))}
+                    </div>
+                    {canRedeem ? (
+                      <button onClick={() => setOpenLevel(l)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+                        🎁 แลกรับรางวัล
+                      </button>
+                    ) : (
+                      <button disabled className="w-full py-2 rounded-lg text-sm sts-display flex items-center justify-center gap-1.5" style={{ background: "var(--surface)", color: "var(--text-primary)", opacity: 0.5, cursor: "not-allowed" }}>
+                        <Lock size={14} /> อีก {tokensToUnlock} โทเคนจึงจะแลกได้
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -900,7 +931,8 @@ function EditLogModal({ log, drivers, onSave, onDelete, onClose }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, theme, onToggleTheme }) {
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, onBackfillQuestLinks, archives, onArchiveAndResetYear, theme, onToggleTheme }) {
+  const [openArchiveId, setOpenArchiveId] = useState(null);
   const [tab, setTab] = useState("share");
   const [giveSearch, setGiveSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
@@ -1152,7 +1184,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
     <div className={`min-h-screen sts-light ${themeClass} pb-10`}>
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" theme={theme} onToggleTheme={onToggleTheme} right={<React.Fragment><button onClick={onBack} className="text-gray-400 text-sm flex items-center gap-1"><ChevronLeft size={16} />กลับ</button><button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button></React.Fragment>} />
       <div className="flex gap-2 px-4 pt-3 overflow-x-auto sts-scroll">
-        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: "📦 คำขอแลกรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }].map((t) => (
+        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: "📦 คำขอแลกรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }, { k: "archives", l: "📚 ประวัติปีก่อน" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)} className="sts-btn px-4 py-2 rounded-full text-sm whitespace-nowrap" style={{ background: tab === t.k ? "#FFC531" : "var(--surface)", color: tab === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
         ))}
       </div>
@@ -1180,6 +1212,28 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
               รีเซ็ตดาวทั้งหมดเป็น 0
             </button>
           </div>
+
+          <div className="sts-card-l p-4" style={{ borderColor: "#8A5A00" }}>
+            <div className="text-sm sts-display mb-2" style={{ color: "#FFC531" }}>📚 ปิดรอบปี & เริ่มปีใหม่</div>
+            <div className="text-xs text-gray-400 mb-3 leading-relaxed">
+              ใช้ตอนสิ้นปี (เช่น สรุปหา Safety Hero ประจำปีแล้ว) ระบบจะ<b>บันทึกอันดับดาวสะสม/โทเคนของทุกคนไว้เป็นประวัติ</b> ก่อน แล้วค่อยรีเซ็ตดาวและโทเคนของทุกคนกลับเป็น 0 เพื่อเริ่มนับปีถัดไป — ข้อมูลปีเก่าดูย้อนหลังได้ที่แท็บ "📚 ประวัติปีก่อน" เสมอ ไม่มีการลบทิ้ง
+            </div>
+            <button
+              onClick={() => {
+                const defaultLabel = String(new Date().getFullYear());
+                const label = window.prompt("ตั้งชื่อรอบปีที่จะเก็บเป็นประวัติ (เช่น ปี พ.ศ. หรือ ค.ศ.)", defaultLabel);
+                if (label === null) return;
+                if (window.confirm(`ยืนยันปิดรอบ "${label}"? ระบบจะบันทึกอันดับปัจจุบันเป็นประวัติ แล้วรีเซ็ตดาว+โทเคนของทุกคนกลับเป็น 0 (รายชื่อคนขับจะไม่หายไป)`)) {
+                  onArchiveAndResetYear(label);
+                  window.alert(`บันทึกประวัติรอบ "${label}" เรียบร้อย และรีเซ็ตดาว+โทเคนของทุกคนแล้ว`);
+                }
+              }}
+              className="sts-btn w-full py-2 rounded-lg text-sm sts-display"
+              style={{ background: "#8A5A00", color: "#FFE9B8" }}
+            >
+              📚 เก็บประวัติปีนี้ & เริ่มปีใหม่
+            </button>
+          </div>
         </div>
       )}
 
@@ -1192,6 +1246,9 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
             </button>
           </div>
           <div className="text-xs text-gray-400 leading-relaxed -mt-3">สร้างเควสไว้ล่วงหน้า ตั้งชื่อ เลือกสีดาว และกำหนดจำนวนดาวเอง พอมีคนขับทำสำเร็จ กดมอบดาวให้ได้ทีละหลายคนเลย เสร็จกิจกรรมแล้วกด "เสร็จสิ้นกิจกรรม" เพื่อเก็บเป็นประวัติ</div>
+          <button onClick={onBackfillQuestLinks} className="text-xs -mt-2" style={{ color: "#FFC531" }}>
+            🔧 นับจำนวนคนได้ดาวไม่ตรง? กดเชื่อมรายการดาวเก่าเข้ากับเควส
+          </button>
 
           {activeQuests.length === 0 && (
             <div className="sts-card-l p-6 text-center text-sm text-gray-500">ยังไม่มีเควสที่เปิดอยู่ กด "สร้างเควสใหม่" เพื่อเริ่มต้น</div>
@@ -1526,6 +1583,48 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {tab === "archives" && (
+        <div className="p-4 space-y-3 sts-fadein">
+          <div className="text-xs text-gray-400 leading-relaxed -mt-1">ทุกครั้งที่กด "เก็บประวัติปีนี้ & เริ่มปีใหม่" ในแท็บ 🔗 แชร์ลิงก์ ระบบจะบันทึกอันดับดาวสะสม/โทเคนของทุกคน ณ ตอนนั้นไว้ที่นี่ ดูย้อนหลังได้ตลอด ไม่มีการลบทิ้ง</div>
+          {archives.length === 0 && (
+            <div className="sts-card-l p-6 text-center text-sm text-gray-500">ยังไม่มีประวัติปีก่อน — จะขึ้นที่นี่เมื่อกด "เก็บประวัติปีนี้ & เริ่มปีใหม่" ครั้งแรก</div>
+          )}
+          <div className="space-y-2">
+            {archives.map((a) => {
+              const isOpen = openArchiveId === a.id;
+              return (
+                <div key={a.id} className="sts-card-l p-4">
+                  <button onClick={() => setOpenArchiveId(isOpen ? null : a.id)} className="w-full flex items-center justify-between text-left">
+                    <div>
+                      <div className="text-sm sts-display" style={{ color: "#FFC531" }}>📚 ปี {a.label}</div>
+                      <div className="text-xs text-gray-500 sts-mono mt-0.5">ปิดรอบเมื่อ {a.archivedAt ? new Date(a.archivedAt).toLocaleDateString("th-TH") : ""}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">👥 {a.driverCount || 0} คน · ⭐ รวม {a.totalStarsGiven || 0} ดาว</div>
+                    </div>
+                    <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : "none" }} />
+                  </button>
+                  {isOpen && (
+                    <div className="mt-3 pt-3 space-y-1" style={{ borderTop: "1px dashed var(--surface-border)" }}>
+                      <div className="text-xs text-gray-500 mb-1">🏆 Safety Hero Top 10 ปี {a.label}</div>
+                      {(a.topDrivers || []).map((d, i) => (
+                        <div key={d.id || i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                          <div className="flex items-center gap-2">
+                            <span className="sts-mono" style={{ color: i < 3 ? "#FFC531" : "var(--text-primary)" }}>{i + 1}.</span>
+                            <span>{d.name}</span>
+                            <span className="text-gray-500">{d.plate}</span>
+                          </div>
+                          <span className="sts-mono" style={{ color: "#FFC531" }}>⭐ {d.total}</span>
+                        </div>
+                      ))}
+                      {(!a.topDrivers || a.topDrivers.length === 0) && <div className="text-xs text-gray-500 text-center py-2">ไม่มีข้อมูล</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1993,6 +2092,7 @@ function App() {
   const [rewardConfig, setRewardConfig] = useState(DEFAULT_REWARD_CONFIG);
   const [redemptions, setRedemptions] = useState({});
   const [quests, setQuests] = useState([]);
+  const [archives, setArchives] = useState([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(null);
   const [currentDriverId, setCurrentDriverId] = useState(null);
@@ -2020,6 +2120,7 @@ function App() {
     const rewardConfigRef = db.ref("rewardConfig");
     const redemptionsRef = db.ref("redemptions");
     const questsRef = db.ref("quests");
+    const archivesRef = db.ref("archives");
 
     driversRef.once("value").then((snap) => {
       if (!snap.exists()) {
@@ -2059,6 +2160,14 @@ function App() {
       const val = snap.val() || {};
       setQuests(Object.keys(val).map((k) => ({ ...val[k], id: k })));
     });
+    const onArchives = archivesRef.on("value", (snap) => {
+      const val = snap.val() || {};
+      setArchives(
+        Object.keys(val)
+          .map((k) => ({ ...val[k], id: k }))
+          .sort((a, b) => (a.archivedAt < b.archivedAt ? 1 : -1))
+      );
+    });
 
     return () => {
       driversRef.off("value", onDrivers);
@@ -2066,6 +2175,7 @@ function App() {
       rewardConfigRef.off("value", onRewardConfig);
       redemptionsRef.off("value", onRedemptions);
       questsRef.off("value", onQuests);
+      archivesRef.off("value", onArchives);
     };
   }, []);
 
@@ -2121,6 +2231,46 @@ function App() {
     if (db) db.ref("logs").set({});
   }
 
+  // เก็บประวัติปีปัจจุบันไว้ดูย้อนหลัง แล้วเริ่มปีใหม่ (ล้างดาว+โทเคน แต่ไม่ลบรายชื่อคนขับ/เควส)
+  function archiveAndResetYear(label) {
+    if (!db) return;
+    const breakdownByDriver = {};
+    drivers.forEach((d) => {
+      const t = totalsByDriver[d.id] || { total: 0 };
+      breakdownByDriver[d.id] = {
+        id: d.id,
+        name: d.name,
+        plate: d.plate,
+        unit: d.unit || "",
+        total: t.total || 0,
+        ppe: t.ppe || 0,
+        safety: t.safety || 0,
+        activity: t.activity || 0,
+        quiz: t.quiz || 0,
+        special: t.special || 0,
+      };
+    });
+    const totalStarsGiven = logs.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+    const topDrivers = Object.values(breakdownByDriver)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+    const snapshot = {
+      label: label || String(new Date().getFullYear()),
+      archivedAt: new Date().toISOString(),
+      driverCount: drivers.length,
+      logCount: logs.length,
+      totalStarsGiven,
+      drivers: breakdownByDriver,
+      topDrivers,
+    };
+    db.ref("archives")
+      .push(snapshot)
+      .then(() => {
+        db.ref("logs").set({});
+        db.ref("redemptions").set({});
+      });
+  }
+
   // เควสกิจกรรม: แม่แบบการให้ดาวที่แอดมินตั้งชื่อ/ประเภทดาว/จำนวนดาวเองได้ล่วงหน้า
   function addQuest(name, type, amount) {
     if (db) db.ref("quests").push({ name, type, amount: Number(amount) || 0, createdAt: new Date().toISOString() });
@@ -2132,6 +2282,28 @@ function App() {
 
   function deleteQuest(questId) {
     if (db) db.ref(`quests/${questId}`).remove();
+  }
+
+  // ซ่อมข้อมูลเก่า: รายการดาวที่เคยให้ผ่านเควสก่อนที่ระบบจะผูก questId ไว้ (เหตุผลตรงกับชื่อเควสเป๊ะๆ) ให้เชื่อมย้อนหลัง
+  function backfillQuestLinks() {
+    if (!db) return;
+    const updates = {};
+    let count = 0;
+    logs.forEach((l) => {
+      if (l.questId) return;
+      const match = quests.find((q) => q.name === l.reason);
+      if (match) {
+        updates[`logs/${l.id}/questId`] = match.id;
+        count++;
+      }
+    });
+    if (count === 0) {
+      window.alert('ไม่พบรายการดาวเก่าที่ตรงกับชื่อเควสที่มีอยู่ตอนนี้ (ต้องมี "เหตุผล" ตรงกับชื่อเควสเป๊ะๆ)');
+      return;
+    }
+    if (window.confirm(`พบ ${count} รายการดาวเก่าที่ตรงกับชื่อเควสปัจจุบัน ต้องการเชื่อมโยงเข้ากับเควสเพื่อให้นับจำนวนคนได้ดาวถูกต้องหรือไม่?`)) {
+      db.ref().update(updates).then(() => window.alert(`เชื่อมโยงสำเร็จ ${count} รายการ`));
+    }
   }
 
   const totalsByDriver = useMemo(() => {
@@ -2203,7 +2375,7 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={backToStaffMenu} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} theme={theme} onToggleTheme={toggleTheme} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} onBackfillQuestLinks={backfillQuestLinks} archives={archives} onArchiveAndResetYear={archiveAndResetYear} theme={theme} onToggleTheme={toggleTheme} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} onBack={backToStaffMenu} theme={theme} onToggleTheme={toggleTheme} />;
 
@@ -2226,6 +2398,51 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+
+<!-- PWA: ลงทะเบียน service worker + ปุ่มติดตั้งแอปลอย -->
+<script>
+  (function () {
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
+      });
+    }
+
+    var deferredPrompt = null;
+    var installBtn = null;
+
+    function showInstallButton() {
+      if (installBtn) return;
+      installBtn = document.createElement("button");
+      installBtn.textContent = "📲 ติดตั้งแอปนี้";
+      installBtn.style.cssText =
+        "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;" +
+        "background:#FFC531;color:#0B0D0F;border:none;border-radius:999px;" +
+        "padding:10px 20px;font-family:'Kanit',sans-serif;font-size:14px;font-weight:600;" +
+        "box-shadow:0 4px 14px rgba(0,0,0,0.35);cursor:pointer;";
+      installBtn.onclick = function () {
+        if (!deferredPrompt) return;
+        installBtn.style.display = "none";
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.finally(function () {
+          deferredPrompt = null;
+        });
+      };
+      document.body.appendChild(installBtn);
+    }
+
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault();
+      deferredPrompt = e;
+      showInstallButton();
+    });
+
+    window.addEventListener("appinstalled", function () {
+      if (installBtn) installBtn.style.display = "none";
+      deferredPrompt = null;
+    });
+  })();
 </script>
 </body>
 </html>
