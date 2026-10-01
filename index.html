@@ -1847,18 +1847,18 @@ function DriverSearch({ drivers, onEnter, onBack }) {
   const [q, setQ] = useState("");
   const query = normalizeText(q);
   const matches = query.length >= 2
-    ? drivers.filter((d) => normalizeText(d.name).includes(query)).slice(0, 6)
+    ? drivers.filter((d) => normalizeText(d.name).includes(query) || normalizeText(d.plate).includes(query)).slice(0, 6)
     : [];
 
   return (
     <div className="w-full max-w-sm">
-      <div className="text-sm sts-display mb-1 text-center">พิมพ์ชื่อ-นามสกุลของคุณ</div>
+      <div className="text-sm sts-display mb-1 text-center">พิมพ์ชื่อ-นามสกุล หรือทะเบียนรถของคุณ</div>
       <div className="text-xs text-gray-400 mb-3 text-center">ระบบจะแสดงเฉพาะรายชื่อที่ตรงกับที่พิมพ์เท่านั้น</div>
       <input
         autoFocus
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="เช่น สมชาย"
+        placeholder="เช่น สมชาย หรือ 51-4447"
         className="sts-card-l w-full px-4 py-3 text-base mb-3"
       />
 
@@ -1957,7 +1957,6 @@ function LoginView({ drivers, onEnter, theme, onToggleTheme }) {
       <div onClick={handleLogoTap} className="sts-display text-3xl text-center" style={{ color: "var(--text-primary)", cursor: "default", userSelect: "none" }}>SMART TRUCK STAR</div>
       <div className="text-sm text-gray-500 mb-1">TMT Steel</div>
       <div className="sts-display text-sm mb-6" style={{ color: "var(--accent)" }}>ขับปลอดภัย ได้ดาว ได้รางวัล</div>
-      <div className="text-[11px] text-gray-400 mb-4 text-center max-w-xs">ข้อมูลดาวสะสมจะอัปเดตให้ทุกเครื่องที่เปิดลิงก์นี้เห็นตรงกันโดยอัตโนมัติ ไม่ต้องสมัครหรือล็อกอิน</div>
 
       {!showDriverList && !showStaff && !showPinPrompt && (
         <div className="w-full max-w-sm space-y-4">
