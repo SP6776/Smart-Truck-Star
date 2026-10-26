@@ -1550,7 +1550,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
             return (
               <div key={l.id} className="sts-card-l p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <div className="sts-display text-sm">{l.name} <span className="text-xs text-gray-500 sts-mono">({l.min}-{l.cost} ⭐)</span></div>
+                  <div className="sts-display text-sm">{l.name} <span className="text-xs text-gray-500 sts-mono">({l.cost} ⭐)</span></div>
                   <button onClick={() => openRewardEdit(l.id)} className="text-xs flex items-center gap-1" style={{ color: "#FFC531" }}><Pencil size={12} /> แก้ไข</button>
                 </div>
                 <div className="space-y-1">
@@ -1727,13 +1727,10 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
               ใส่ "ดาวสูงสุดของขั้น" ซึ่งเป็นจำนวนโทเคนที่ใช้แลกรางวัลของขั้นนั้นด้วย ขั้นถัดไปจะเริ่มนับต่อจากเลขของขั้นก่อนหน้าอัตโนมัติ ใช้ปรับยอดตอนเริ่มปีใหม่ได้ ดาวสะสมของคนขับไม่หาย
             </div>
             {LEVELS.map((l, i) => {
-              const prev = i === 0 ? null : levelFormNums[i - 1];
-              const startText = i === 0 ? "0" : Number.isFinite(prev) ? String(prev + 1) : "?";
               return (
                 <div key={l.id} className="flex items-center gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{l.name}</div>
-                    <div className="text-[11px] text-gray-500 sts-mono">ช่วงดาว {startText} - {levelForm[i] === "" ? "?" : levelForm[i]}</div>
                   </div>
                   <input
                     type="text"
