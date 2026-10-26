@@ -532,7 +532,7 @@ function RewardRedeemModal({ levelName, options, tokens, onChoose, onClose }) {
   );
 }
 
-function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptionHistory, onRedeem, theme, onToggleTheme }) {
+function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptionHistory, pastRedemptions, onRedeem, theme, onToggleTheme }) {
   const total = totals.total;
   const level = getLevel(total);
   const next = getNextLevel(total);
@@ -625,16 +625,39 @@ function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptio
           })}
         </div>
 
-        {historyList.length > 0 && (
+        {(historyList.length > 0 || (pastRedemptions && pastRedemptions.length > 0)) && (
           <div className="mt-6">
             <div className="text-xs text-gray-500 mb-2 px-1">ประวัติการแลกรางวัลของฉัน</div>
             <div className="space-y-2">
               {historyList.map((r) => {
                 const lvl = LEVELS.find((l) => l.id === r.levelId);
+                const picked = r.status === "picked";
                 return (
                   <div key={r.key} className="sts-card-l p-3">
-                    <div className="text-sm">🎁 {r.choice}</div>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm">🎁 {r.choice}</div>
+                      <span
+                        className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap"
+                        style={picked ? { background: "#E3F6E8", color: "#1E7A3C" } : { background: "#FFF1CC", color: "#8A5A00" }}
+                      >
+                        {picked ? "✅ รับของแล้ว" : "⏳ รอรับของ"}
+                      </span>
+                    </div>
                     <div className="text-xs text-gray-500">{lvl?.name || r.levelId} · ใช้ {r.tokensSpent || 0} โทเคน</div>
+                    <div className="text-xs text-gray-400 sts-mono">
+                      แลกเมื่อ {r.redeemedAt ? new Date(r.redeemedAt).toLocaleDateString("th-TH") : ""}
+                      {picked && r.pickedAt ? ` · รับเมื่อ ${new Date(r.pickedAt).toLocaleDateString("th-TH")}` : ""}
+                    </div>
+                    {!picked && <div className="text-[11px] mt-1" style={{ color: "#8A5A00" }}>รอรับของรางวัลภายใน 3-5 วัน ติดต่อรับได้ที่ช่องหมายเลข 7</div>}
+                  </div>
+                );
+              })}
+              {(pastRedemptions || []).map((r) => {
+                const lvl = LEVELS.find((l) => l.id === r.levelId);
+                return (
+                  <div key={r.key} className="sts-card-l p-3" style={{ opacity: 0.85 }}>
+                    <div className="text-sm">🎁 {r.choice}</div>
+                    <div className="text-xs text-gray-500">{lvl?.name || r.levelId} · ใช้ {r.tokensSpent || 0} โทเคน · 📚 ปี {r.yearLabel}</div>
                     <div className="text-xs text-gray-400 sts-mono">{r.redeemedAt ? new Date(r.redeemedAt).toLocaleDateString("th-TH") : ""}</div>
                   </div>
                 );
@@ -665,7 +688,7 @@ function RankView({ totals, tokens, setView, driverId, rewardConfig, myRedemptio
             <div className="sts-display text-lg mb-1">ยินดีด้วยค่ะ! แลกรางวัลสำเร็จ</div>
             <div className="text-xs text-gray-500 mb-2">ขั้น {redeemedSuccess.levelName}</div>
             <div className="sts-display text-base mb-4" style={{ color: "var(--accent)" }}>🎁 {redeemedSuccess.choice}</div>
-            <div className="text-xs text-gray-400 mb-4 leading-relaxed">รอรับของรางวัลภายใน 3-5 วันนะคะ</div>
+            <div className="text-sm text-gray-400 mb-4 leading-relaxed">รอรับของรางวัลภายใน 3-5 วัน<br />ติดต่อรับได้ที่ช่องหมายเลข 7 ค่ะ</div>
             <button onClick={() => setRedeemedSuccess(null)} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "linear-gradient(90deg,#F5B700,#EA7C1F)", color: "#20242B" }}>
               🎉 เยี่ยมเลย!
             </button>
@@ -931,9 +954,13 @@ function EditLogModal({ log, drivers, onSave, onDelete, onClose }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, onBackfillQuestLinks, archives, onArchiveAndResetYear, theme, onToggleTheme }) {
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onMarkRedemptionPicked, staffPin, onChangeStaffPin, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, onBackfillQuestLinks, archives, onArchiveAndResetYear, theme, onToggleTheme }) {
   const [openArchiveId, setOpenArchiveId] = useState(null);
   const [tab, setTab] = useState("share");
+  const [redFilter, setRedFilter] = useState("pending"); // pending | picked | all
+  const [redMonth, setRedMonth] = useState("all"); // "all" หรือ "YYYY-MM"
+  const [pinForm, setPinForm] = useState({ current: "", next: "", confirm: "" });
+  const [pinMsg, setPinMsg] = useState(null); // { ok, text }
   const [giveSearch, setGiveSearch] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
   const [flash, setFlash] = useState(null);
@@ -1178,13 +1205,102 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
     XLSX.writeFile(wb, `SmartTruckStar_SafetyHero_${todayStr()}.xlsx`);
   };
 
+  // ---------- รายการแลกรางวัล: สถานะรับของ + สรุปรายเดือน ----------
+  const monthKeyOf = (iso) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "";
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  };
+  const monthLabelOf = (key) =>
+    key === "all" ? "ทั้งหมด" : new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString("th-TH", { month: "long", year: "numeric" });
+  const redStatusOf = (r) => (r.status === "picked" ? "picked" : "pending");
+  const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString("th-TH") : "");
+
+  const allRedemptionRows = [];
+  Object.keys(redemptions || {}).forEach((driverId) => {
+    Object.keys(redemptions[driverId] || {}).forEach((redemptionKey) => {
+      const r = redemptions[driverId][redemptionKey];
+      allRedemptionRows.push({
+        driverId,
+        redemptionKey,
+        driver: drivers.find((d) => d.id === driverId),
+        level: LEVELS.find((l) => l.id === r.levelId),
+        ...r,
+      });
+    });
+  });
+  allRedemptionRows.sort((a, b) => (b.redeemedAt || "").localeCompare(a.redeemedAt || ""));
+  const redPendingAll = allRedemptionRows.filter((r) => redStatusOf(r) === "pending").length;
+  const redMonthOptions = Array.from(new Set(allRedemptionRows.map((r) => monthKeyOf(r.redeemedAt)).filter(Boolean))).sort().reverse();
+  const redInMonth = allRedemptionRows.filter((r) => redMonth === "all" || monthKeyOf(r.redeemedAt) === redMonth);
+  const redShown = redInMonth.filter((r) => redFilter === "all" || redStatusOf(r) === redFilter);
+  const redPendingCount = redInMonth.filter((r) => redStatusOf(r) === "pending").length;
+  const redPickedCount = redInMonth.length - redPendingCount;
+  const redSummary = (() => {
+    const map = {};
+    redInMonth.forEach((r) => {
+      const key = `${r.level?.name || r.levelId}||${r.choice}`;
+      if (!map[key]) map[key] = { level: r.level?.name || r.levelId || "", choice: r.choice || "", count: 0, picked: 0, pending: 0 };
+      map[key].count += 1;
+      if (redStatusOf(r) === "picked") map[key].picked += 1;
+      else map[key].pending += 1;
+    });
+    return Object.values(map).sort((a, b) => b.count - a.count);
+  })();
+
+  const exportRedemptionsExcel = () => {
+    const header = ["วันที่แลก", "รหัสคนขับ", "ชื่อ-สกุล", "ทะเบียนรถ", "สังกัด", "ขั้น", "รางวัลที่เลือก", "โทเคนที่ใช้", "สถานะ", "วันที่รับของ"];
+    const rows = redInMonth.map((r) => [
+      fmtDateTime(r.redeemedAt),
+      r.driverId,
+      r.driver?.name || "",
+      r.driver?.plate || "",
+      r.driver?.unit || "",
+      r.level?.name || r.levelId || "",
+      r.choice || "",
+      Number(r.tokensSpent) || 0,
+      redStatusOf(r) === "picked" ? "รับแล้ว" : "รอรับ",
+      fmtDateTime(r.pickedAt),
+    ]);
+    const summaryRows = [
+      [`สรุปการแลกรางวัล — ${monthLabelOf(redMonth)}`],
+      ["แลกทั้งหมด (รายการ)", redInMonth.length],
+      ["รับของแล้ว", redPickedCount],
+      ["รอรับ", redPendingCount],
+      [],
+      ["ขั้น", "รางวัล", "จำนวน", "รับแล้ว", "รอรับ"],
+      ...redSummary.map((x) => [x.level, x.choice, x.count, x.picked, x.pending]),
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryRows), "สรุป");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...rows]), "รายการแลกรางวัล");
+    XLSX.writeFile(wb, `SmartTruckStar_แลกรางวัล_${redMonth === "all" ? "ทั้งหมด" : redMonth}.xlsx`);
+  };
+
+  const submitPinChange = () => {
+    const cur = pinForm.current.trim();
+    const nxt = pinForm.next.trim();
+    const cfm = pinForm.confirm.trim();
+    if (cur !== (staffPin || STAFF_PIN)) return setPinMsg({ ok: false, text: "รหัสปัจจุบันไม่ถูกต้อง" });
+    if (!/^\d{4,8}$/.test(nxt)) return setPinMsg({ ok: false, text: "รหัสใหม่ต้องเป็นตัวเลข 4-8 หลัก" });
+    if (nxt !== cfm) return setPinMsg({ ok: false, text: "รหัสใหม่ 2 ช่องไม่ตรงกัน" });
+    if (nxt === cur) return setPinMsg({ ok: false, text: "รหัสใหม่ต้องไม่ซ้ำกับรหัสเดิม" });
+    onChangeStaffPin(nxt)
+      .then(() => {
+        setPinForm({ current: "", next: "", confirm: "" });
+        setPinMsg({ ok: true, text: "เปลี่ยนรหัสเจ้าหน้าที่เรียบร้อยแล้ว ใช้ได้ทันทีทุกเครื่อง" });
+      })
+      .catch(() => setPinMsg({ ok: false, text: "บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตหรือสิทธิ์ Firebase แล้วลองใหม่" }));
+  };
+
   const themeClass = theme === "night" ? "theme-night" : "theme-day";
 
   return (
     <div className={`min-h-screen sts-light ${themeClass} pb-10`}>
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" theme={theme} onToggleTheme={onToggleTheme} right={<React.Fragment><button onClick={onBack} className="text-gray-400 text-sm flex items-center gap-1"><ChevronLeft size={16} />กลับ</button><button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button></React.Fragment>} />
       <div className="flex gap-2 px-4 pt-3 overflow-x-auto sts-scroll">
-        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: "📦 คำขอแลกรางวัล" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }, { k: "archives", l: "📚 ประวัติปีก่อน" }].map((t) => (
+        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: `📦 รายการแลกรางวัล${redPendingAll > 0 ? ` (รอรับ ${redPendingAll})` : ""}` }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }, { k: "archives", l: "📚 ประวัติปีก่อน" }, { k: "settings", l: "⚙️ ตั้งค่า" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)} className="sts-btn px-4 py-2 rounded-full text-sm whitespace-nowrap" style={{ background: tab === t.k ? "#FFC531" : "var(--surface)", color: tab === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
         ))}
       </div>
@@ -1221,6 +1337,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
             <button
               onClick={() => {
                 const defaultLabel = String(new Date().getFullYear());
+                if (redPendingAll > 0 && !window.confirm(`ยังมีของรางวัลที่ยังไม่ได้ส่งมอบ (รอรับ) อีก ${redPendingAll} รายการ\nถ้าปิดรอบปีตอนนี้ รายการเหล่านี้จะถูกย้ายไปเก็บในประวัติปีก่อน และจะไม่แสดงในหน้ารายการรอรับอีก\n\nต้องการดำเนินการต่อหรือไม่?`)) return;
                 const label = window.prompt("ตั้งชื่อรอบปีที่จะเก็บเป็นประวัติ (เช่น ปี พ.ศ. หรือ ค.ศ.)", defaultLabel);
                 if (label === null) return;
                 if (window.confirm(`ยืนยันปิดรอบ "${label}"? ระบบจะบันทึกอันดับปัจจุบันเป็นประวัติ แล้วรีเซ็ตดาว+โทเคนของทุกคนกลับเป็น 0 (รายชื่อคนขับจะไม่หายไป)`)) {
@@ -1406,64 +1523,192 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
 
       {tab === "redemptions" && (
         <div className="p-4 space-y-3 sts-fadein">
-          {(() => {
-            const rows = [];
-            Object.keys(redemptions || {}).forEach((driverId) => {
-              Object.keys(redemptions[driverId] || {}).forEach((redemptionKey) => {
-                const r = redemptions[driverId][redemptionKey];
-                const driver = drivers.find((d) => d.id === driverId);
-                const level = LEVELS.find((l) => l.id === r.levelId);
-                rows.push({ driverId, redemptionKey, driver, level, ...r });
-              });
-            });
-            rows.sort((a, b) => (b.redeemedAt || "").localeCompare(a.redeemedAt || ""));
+          {allRedemptionRows.length === 0 ? (
+            <div className="text-center text-sm text-gray-500 py-10">ยังไม่มีใครแลกรับรางวัล</div>
+          ) : (
+            <React.Fragment>
+              {/* สรุปตามเดือน */}
+              <div className="sts-card-l p-4">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="sts-display text-sm" style={{ color: "#FFC531" }}>📊 สรุปการแลกรางวัล</div>
+                  <select
+                    value={redMonth}
+                    onChange={(e) => setRedMonth(e.target.value)}
+                    className="text-xs px-2 py-1.5 rounded-lg"
+                    style={{ background: "var(--input-bg)", color: "var(--text-primary)", border: "1px solid var(--surface-border)" }}
+                  >
+                    <option value="all">ทุกเดือน</option>
+                    {redMonthOptions.map((m) => (
+                      <option key={m} value={m}>{monthLabelOf(m)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                  <div className="p-2 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                    <div className="sts-mono sts-display text-xl">{redInMonth.length}</div>
+                    <div className="text-[11px] text-gray-500">แลกทั้งหมด</div>
+                  </div>
+                  <div className="p-2 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                    <div className="sts-mono sts-display text-xl" style={{ color: "#2E9E5B" }}>{redPickedCount}</div>
+                    <div className="text-[11px] text-gray-500">รับของแล้ว</div>
+                  </div>
+                  <div className="p-2 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                    <div className="sts-mono sts-display text-xl" style={{ color: "#E0A400" }}>{redPendingCount}</div>
+                    <div className="text-[11px] text-gray-500">รอรับ</div>
+                  </div>
+                </div>
+                {redSummary.length > 0 && (
+                  <div className="space-y-1 mb-3">
+                    {redSummary.map((x, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs px-2 py-1.5 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                        <span>🎁 {x.choice} <span className="text-gray-500">({x.level})</span></span>
+                        <span className="sts-mono">{x.count} ชิ้น{x.pending > 0 ? <span style={{ color: "#E0A400" }}> · รอรับ {x.pending}</span> : ""}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <button onClick={exportRedemptionsExcel} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+                  📥 ดาวน์โหลดรายงาน Excel ({monthLabelOf(redMonth)})
+                </button>
+              </div>
 
-            if (rows.length === 0) {
-              return <div className="text-center text-sm text-gray-500 py-10">ยังไม่มีใครแลกรับรางวัล</div>;
-            }
+              {/* ตัวกรองสถานะ */}
+              <div className="flex gap-2">
+                {[
+                  { k: "pending", l: `⏳ รอรับ (${redPendingCount})` },
+                  { k: "picked", l: `✅ รับแล้ว (${redPickedCount})` },
+                  { k: "all", l: `ทั้งหมด (${redInMonth.length})` },
+                ].map((f) => (
+                  <button
+                    key={f.k}
+                    onClick={() => setRedFilter(f.k)}
+                    className="sts-btn flex-1 py-1.5 rounded-full text-xs whitespace-nowrap"
+                    style={{ background: redFilter === f.k ? "#FFC531" : "var(--surface)", color: redFilter === f.k ? "#0B0D0F" : "#9CA3AF" }}
+                  >
+                    {f.l}
+                  </button>
+                ))}
+              </div>
 
-            return (
-              <React.Fragment>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="text-xs text-gray-400">ทั้งหมด {rows.length} รายการ</div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-xs text-gray-400">แสดง {redShown.length} รายการ</div>
+                {redFilter === "pending" && redShown.length > 0 && (
                   <button
                     onClick={() => {
-                      if (window.confirm("ยืนยันล้างประวัติการแลกรางวัลทั้งหมด? โทเคนของทุกคนจะถูกคำนวณใหม่ (เท่ากับดาวสะสมปัจจุบันทั้งหมด)")) {
-                        onResetRedemptions();
+                      if (window.confirm(`ทำเครื่องหมาย "รับของแล้ว" ให้ทั้ง ${redShown.length} รายการที่แสดงอยู่?`)) {
+                        redShown.forEach((r) => onMarkRedemptionPicked(r.driverId, r.redemptionKey, true));
                       }
                     }}
                     className="text-xs"
-                    style={{ color: "#FF6B6B" }}
+                    style={{ color: "#2E9E5B" }}
                   >
-                    ล้างคำขอทั้งหมด
+                    รับครบทั้งหมดที่แสดง
                   </button>
-                </div>
-                {rows.map((r) => (
-                  <div key={`${r.driverId}-${r.redemptionKey}`} className="sts-card-l p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
+                )}
+              </div>
+
+              {redShown.length === 0 && <div className="text-center text-sm text-gray-500 py-8">{redFilter === "pending" ? "ไม่มีรายการรอรับของ 🎉" : "ไม่มีรายการ"}</div>}
+
+              {redShown.map((r) => {
+                const picked = redStatusOf(r) === "picked";
+                return (
+                  <div key={`${r.driverId}-${r.redemptionKey}`} className="sts-card-l p-3" style={picked ? { opacity: 0.8 } : {}}>
+                    <div className="flex items-start gap-3">
                       <span className="text-xl">{DRIVER_AVATAR}</span>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="text-sm">{r.driver?.name || r.driverId} <span className="text-gray-500 text-xs sts-mono">({r.driverId})</span></div>
-                        <div className="text-xs text-gray-500">ขั้น {r.level?.name || r.levelId} · 🎁 {r.choice} · ใช้ {r.tokensSpent || 0} โทเคน</div>
-                        <div className="text-xs text-gray-600 sts-mono">{r.redeemedAt ? new Date(r.redeemedAt).toLocaleString("th-TH") : ""}</div>
+                        {r.driver?.plate && <div className="text-xs text-gray-500">🚛 {r.driver.plate}</div>}
+                        <div className="text-sm mt-0.5" style={{ color: "#FFC531" }}>🎁 {r.choice}</div>
+                        <div className="text-xs text-gray-500">ขั้น {r.level?.name || r.levelId} · ใช้ {r.tokensSpent || 0} โทเคน</div>
+                        <div className="text-xs text-gray-600 sts-mono">แลกเมื่อ {fmtDateTime(r.redeemedAt)}</div>
+                        {picked && <div className="text-xs sts-mono" style={{ color: "#2E9E5B" }}>✅ รับของเมื่อ {fmtDateTime(r.pickedAt)}</div>}
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`ยกเลิกการแลกรางวัลนี้ของ ${r.driver?.name || r.driverId}? โทเคน ${r.tokensSpent || 0} จะถูกคืนกลับให้คนขับ`)) {
-                          onCancelRedemption(r.driverId, r.redemptionKey);
-                        }
-                      }}
-                      className="text-xs px-3 py-1 rounded-lg"
-                      style={{ background: "#5A2323", color: "#FFD9D9" }}
-                    >
-                      ยกเลิก
-                    </button>
+                    <div className="flex items-center gap-2 mt-3">
+                      {!picked ? (
+                        <React.Fragment>
+                          <button
+                            onClick={() => onMarkRedemptionPicked(r.driverId, r.redemptionKey, true)}
+                            className="sts-btn flex-1 py-2 rounded-lg text-sm sts-display"
+                            style={{ background: "#2E9E5B", color: "#FFFFFF" }}
+                          >
+                            ✅ รับของแล้ว
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`ยกเลิกการแลกรางวัลนี้ของ ${r.driver?.name || r.driverId}? โทเคน ${r.tokensSpent || 0} จะถูกคืนกลับให้คนขับ`)) {
+                                onCancelRedemption(r.driverId, r.redemptionKey);
+                              }
+                            }}
+                            className="text-xs px-3 py-2 rounded-lg"
+                            style={{ background: "#5A2323", color: "#FFD9D9" }}
+                          >
+                            ยกเลิก
+                          </button>
+                        </React.Fragment>
+                      ) : (
+                        <button
+                          onClick={() => onMarkRedemptionPicked(r.driverId, r.redemptionKey, false)}
+                          className="text-xs px-3 py-1.5 rounded-lg"
+                          style={{ background: "var(--input-bg)", color: "#9CA3AF" }}
+                        >
+                          ↩︎ ย้อนกลับเป็นรอรับ
+                        </button>
+                      )}
+                    </div>
                   </div>
-                ))}
-              </React.Fragment>
-            );
-          })()}
+                );
+              })}
+
+              <div className="text-center pt-2">
+                <button
+                  onClick={() => {
+                    if (window.confirm(`ยืนยันล้างประวัติการแลกรางวัลทั้งหมด? (${redPendingAll} รายการยังรอรับของ) โทเคนของทุกคนจะถูกคำนวณใหม่ (เท่ากับดาวสะสมปัจจุบันทั้งหมด)`)) {
+                      onResetRedemptions();
+                    }
+                  }}
+                  className="text-xs"
+                  style={{ color: "#FF6B6B" }}
+                >
+                  ล้างประวัติการแลกทั้งหมด
+                </button>
+              </div>
+            </React.Fragment>
+          )}
+        </div>
+      )}
+
+      {tab === "settings" && (
+        <div className="p-4 space-y-4 sts-fadein">
+          <div className="sts-card-l p-4 space-y-3">
+            <div className="sts-display text-sm" style={{ color: "#FFC531" }}>🔒 เปลี่ยนรหัสเจ้าหน้าที่ (PIN)</div>
+            <div className="text-xs text-gray-400 leading-relaxed">
+              รหัสนี้ใช้เข้าหลังบ้านโดยกดโลโก้หน้าแรก 5 ครั้ง รหัสใหม่เก็บไว้ในระบบกลาง ใช้ได้ทันทีทุกเครื่อง ไม่ต้องแก้โค้ดหรืออัปโหลดไฟล์ใหม่ (ตั้งเป็นตัวเลข 4-8 หลัก)
+            </div>
+            {[
+              { k: "current", l: "รหัสปัจจุบัน" },
+              { k: "next", l: "รหัสใหม่ (ตัวเลข 4-8 หลัก)" },
+              { k: "confirm", l: "ยืนยันรหัสใหม่อีกครั้ง" },
+            ].map((f) => (
+              <div key={f.k}>
+                <div className="text-xs text-gray-500 mb-1">{f.l}</div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={8}
+                  value={pinForm[f.k]}
+                  onChange={(e) => { setPinForm({ ...pinForm, [f.k]: e.target.value.replace(/\D/g, "") }); setPinMsg(null); }}
+                  className="sts-card-l w-full px-3 py-2 bg-transparent text-sm sts-mono"
+                  style={{ color: "var(--text-primary)" }}
+                />
+              </div>
+            ))}
+            {pinMsg && <div className="text-xs" style={{ color: pinMsg.ok ? "#2E9E5B" : "#FF6B6B" }}>{pinMsg.text}</div>}
+            <button onClick={submitPinChange} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+              บันทึกรหัสใหม่
+            </button>
+            <div className="text-[11px] text-gray-500 leading-relaxed">ถ้าลืมรหัส: รหัสเริ่มต้นในโค้ดคือ 6776 (ใช้ได้เฉพาะตอนยังไม่เคยเปลี่ยนรหัสในหลังบ้าน)</div>
+          </div>
         </div>
       )}
 
@@ -1602,7 +1847,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
                     <div>
                       <div className="text-sm sts-display" style={{ color: "#FFC531" }}>📚 ปี {a.label}</div>
                       <div className="text-xs text-gray-500 sts-mono mt-0.5">ปิดรอบเมื่อ {a.archivedAt ? new Date(a.archivedAt).toLocaleDateString("th-TH") : ""}</div>
-                      <div className="text-xs text-gray-400 mt-0.5">👥 {a.driverCount || 0} คน · ⭐ รวม {a.totalStarsGiven || 0} ดาว</div>
+                      <div className="text-xs text-gray-400 mt-0.5">👥 {a.driverCount || 0} คน · ⭐ รวม {a.totalStarsGiven || 0} ดาว{a.redemptions ? ` · 🎁 แลกรางวัล ${Object.values(a.redemptions).reduce((n, byDriver) => n + Object.keys(byDriver || {}).length, 0)} ครั้ง` : ""}</div>
                     </div>
                     <ChevronRight size={16} style={{ transform: isOpen ? "rotate(90deg)" : "none" }} />
                   </button>
@@ -1916,7 +2161,7 @@ function StaffMenu({ onSelectRole, onBack, backLabel }) {
   );
 }
 
-function LoginView({ drivers, onEnter, theme, onToggleTheme }) {
+function LoginView({ drivers, onEnter, theme, onToggleTheme, staffPin }) {
   const [showDriverList, setShowDriverList] = useState(false);
   const [showStaff, setShowStaff] = useState(false);
   const [showPinPrompt, setShowPinPrompt] = useState(false);
@@ -1938,7 +2183,7 @@ function LoginView({ drivers, onEnter, theme, onToggleTheme }) {
   };
 
   const submitPin = () => {
-    if (pin === STAFF_PIN) {
+    if (pin === (staffPin || STAFF_PIN)) {
       setShowPinPrompt(false);
       setShowStaff(true);
     } else {
@@ -2092,6 +2337,8 @@ function App() {
   const [redemptions, setRedemptions] = useState({});
   const [quests, setQuests] = useState([]);
   const [archives, setArchives] = useState([]);
+  const [staffPin, setStaffPin] = useState(STAFF_PIN); // PIN ปัจจุบัน (แก้ได้จากหลังบ้าน เก็บที่ Firebase: settings/staffPin)
+  const [settingsReady, setSettingsReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState(null);
   const [currentDriverId, setCurrentDriverId] = useState(null);
@@ -2120,6 +2367,7 @@ function App() {
     const redemptionsRef = db.ref("redemptions");
     const questsRef = db.ref("quests");
     const archivesRef = db.ref("archives");
+    const staffPinRef = db.ref("settings/staffPin");
 
     driversRef.once("value").then((snap) => {
       if (!snap.exists()) {
@@ -2168,7 +2416,18 @@ function App() {
       );
     });
 
+    const onStaffPin = staffPinRef.on(
+      "value",
+      (snap) => {
+        const v = snap.val();
+        setStaffPin(v ? String(v) : STAFF_PIN);
+        setSettingsReady(true);
+      },
+      () => setSettingsReady(true)
+    );
+
     return () => {
+      staffPinRef.off("value", onStaffPin);
       driversRef.off("value", onDrivers);
       logsRef.off("value", onLogs);
       rewardConfigRef.off("value", onRewardConfig);
@@ -2188,7 +2447,20 @@ function App() {
 
   function redeemReward(driverId, levelId, choice, tokensSpent) {
     if (!db) return;
-    db.ref(`redemptions/${driverId}`).push({ levelId, choice, redeemedAt: new Date().toISOString(), tokensSpent: Number(tokensSpent) || 0 });
+    db.ref(`redemptions/${driverId}`).push({ levelId, choice, redeemedAt: new Date().toISOString(), tokensSpent: Number(tokensSpent) || 0, status: "pending" });
+  }
+
+  // เจ้าหน้าที่กด "รับของแล้ว" (หรือย้อนกลับเป็นรอรับ) — ไม่กระทบโทเคน/ดาวของคนขับ
+  function markRedemptionPicked(driverId, redemptionKey, picked) {
+    if (!db) return;
+    db.ref(`redemptions/${driverId}/${redemptionKey}`).update(
+      picked ? { status: "picked", pickedAt: new Date().toISOString() } : { status: "pending", pickedAt: null }
+    );
+  }
+
+  function changeStaffPin(newPin) {
+    if (!db) return Promise.reject(new Error("no db"));
+    return db.ref("settings/staffPin").set(String(newPin));
   }
 
   function cancelRedemption(driverId, redemptionKey) {
@@ -2261,6 +2533,7 @@ function App() {
       totalStarsGiven,
       drivers: breakdownByDriver,
       topDrivers,
+      redemptions: redemptions || {},
     };
     db.ref("archives")
       .push(snapshot)
@@ -2362,24 +2635,34 @@ function App() {
     try { localStorage.setItem(storageKey, level.id); } catch (e) {}
   }, [currentDriverId, totalsByDriver]);
 
+  // ประวัติการแลกของปีก่อนๆ (ที่ถูกเก็บไว้ตอนปิดรอบปี) ของคนขับคนนี้
+  const pastRedemptionsOf = (driverId) => {
+    const out = [];
+    (archives || []).forEach((a) => {
+      const mine = (a.redemptions && a.redemptions[driverId]) || {};
+      Object.keys(mine).forEach((k) => out.push({ ...mine[k], key: `${a.id}-${k}`, yearLabel: a.label }));
+    });
+    return out;
+  };
+
   const exitToLogin = () => { setRole(null); setCurrentDriverId(null); setView("home"); };
   const backToStaffMenu = () => { setCurrentDriverId(null); setRole("staffMenu"); };
 
   if (!isFirebaseConfigured) return <FirebaseSetupNeeded />;
-  if (loading) return <LoadingScreen />;
+  if (loading || !settingsReady) return <LoadingScreen />;
 
-  if (!role) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
+  if (!role) return <LoginView staffPin={staffPin} drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
 
   if (role === "staffMenu") return <StaffMenuScreen onSelectRole={(r) => setRole(r)} onExit={exitToLogin} />;
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={backToStaffMenu} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} onBackfillQuestLinks={backfillQuestLinks} archives={archives} onArchiveAndResetYear={archiveAndResetYear} theme={theme} onToggleTheme={toggleTheme} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onMarkRedemptionPicked={markRedemptionPicked} staffPin={staffPin} onChangeStaffPin={changeStaffPin} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} onBackfillQuestLinks={backfillQuestLinks} archives={archives} onArchiveAndResetYear={archiveAndResetYear} theme={theme} onToggleTheme={toggleTheme} />;
 
   if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} onBack={backToStaffMenu} theme={theme} onToggleTheme={toggleTheme} />;
 
   const driver = drivers.find((d) => d.id === currentDriverId);
-  if (!driver) return <LoginView drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
+  if (!driver) return <LoginView staffPin={staffPin} drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
   const totals = totalsByDriver[currentDriverId] || { total: 0, ppe: 0, safety: 0, activity: 0, quiz: 0, special: 0 };
   const todayTotal = todayByDriver[currentDriverId] || 0;
   const tokens = tokensByDriver[currentDriverId] || 0;
@@ -2389,7 +2672,7 @@ function App() {
       {view === "home" && <DriverHome driver={driver} totals={totals} tokens={tokens} todayTotal={todayTotal} setView={setView} exit={exitToLogin} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "mystar" && <MyStar totals={totals} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
-      {view === "reward" && <RankView totals={totals} tokens={tokens} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} myRedemptionHistory={redemptions[currentDriverId] || {}} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "reward" && <RankView totals={totals} tokens={tokens} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} myRedemptionHistory={redemptions[currentDriverId] || {}} pastRedemptions={pastRedemptionsOf(currentDriverId)} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
       <BottomNav view={view} setView={setView} />
       {levelUpInfo && <LevelUpCelebration level={levelUpInfo} onClose={() => setLevelUpInfo(null)} />}
     </div>
