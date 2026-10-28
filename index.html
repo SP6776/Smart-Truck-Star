@@ -103,6 +103,388 @@ const Trash2 = (p) => <IconBase {...p}>🗑️</IconBase>;
 const XIcon = (p) => <IconBase {...p}>✕</IconBase>;
 const LinkIcon = (p) => <IconBase {...p}>🔗</IconBase>;
 const Trophy = (p) => <IconBase {...p}>🏆</IconBase>;
+const AlertIcon = (p) => <IconBase {...p}>⚠️</IconBase>;
+
+/* ============================= เหตุการณ์ความปลอดภัย (Incident) =============================
+   แยกจากระบบดาวรางวัลโดยสิ้นเชิง: เก็บที่ Firebase node "incidents" เท่านั้น
+   ไม่หักดาว ไม่กระทบคะแนนสะสม/แรงค์/โทเคน/การแลกรางวัล */
+
+const INCIDENT_LEVELS = {
+  1: { level: 1, name: "เล็กน้อย", color: "#D4B25C" },
+  2: { level: 2, name: "ปานกลาง", color: "#CC8A4E" },
+  3: { level: 3, name: "รุนแรง", color: "#B25550" },
+  4: { level: 4, name: "ร้ายแรง", color: "#2E2E2E" },
+};
+const INCIDENT_LEVEL_KEYS = [1, 2, 3, 4];
+const INCIDENT_CATEGORIES = ["คอมเพลนจากลูกค้า", "แต่งกายไม่ปลอดภัย / PPE", "ขับขี่", "อุบัติเหตุ", "อื่นๆ"];
+
+// พิกัดดาว 5 แฉก (กึ่งกลาง 50,53 / รัศมีนอก 46 / รัศมีใน 19)
+const CRACK_STAR_POINTS = (() => {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const ang = ((-90 + i * 36) * Math.PI) / 180;
+    const r = i % 2 === 0 ? 46 : 19;
+    pts.push(`${(50 + r * Math.cos(ang)).toFixed(1)},${(53 + r * Math.sin(ang)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+})();
+
+// "ดาวร้าว": ดาว 5 แฉกที่มีรอยแตกตรงกลาง สีหม่นตามระดับ (ต่างจากดาวรางวัลสีทองที่เรียบ)
+function CrackStar({ level = 1, size = 28 }) {
+  const info = INCIDENT_LEVELS[level] || INCIDENT_LEVELS[1];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      role="img"
+      aria-label={`ดาวร้าว ระดับ ${info.level} ${info.name}`}
+      style={{ display: "inline-block", flexShrink: 0, filter: info.level === 4 ? "drop-shadow(0 0 1.5px rgba(255,255,255,0.55))" : "none" }}
+    >
+      <polygon points={CRACK_STAR_POINTS} fill={info.color} stroke={info.color} strokeWidth="5" strokeLinejoin="round" />
+      <path d="M51 22 L45 36 L55 45 L45 58 L53 70" fill="none" stroke="#FFFFFF" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" />
+    </svg>
+  );
+}
+
+const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const localTimeStr = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+function parseLocalDate(str) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str || "");
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+}
+function formatIncidentDate(str) {
+  const d = parseLocalDate(str);
+  return d ? d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }) : str || "";
+}
+function daysSinceDate(str) {
+  const d = parseLocalDate(str);
+  if (!d) return 0;
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.max(0, Math.round((today - d) / 86400000));
+}
+function sortIncidentsNewestFirst(list) {
+  return [...list].sort((a, b) => `${b.date || ""} ${b.time || ""} ${b.createdAt || ""}`.localeCompare(`${a.date || ""} ${a.time || ""} ${a.createdAt || ""}`));
+}
+function countIncidentsByLevel(list) {
+  const c = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  list.forEach((i) => { if (c[i.level] !== undefined) c[i.level] += 1; });
+  return c;
+}
+
+// แถบสรุปจำนวนเหตุการณ์ตามระดับ (ดาวร้าว + ชื่อระดับ + จำนวน)
+function IncidentLevelSummary({ incidents }) {
+  const counts = countIncidentsByLevel(incidents);
+  return (
+    <div className="grid grid-cols-4 gap-2">
+      {INCIDENT_LEVEL_KEYS.map((lv) => (
+        <div key={lv} className="sts-card-l p-2 flex flex-col items-center text-center">
+          <CrackStar level={lv} size={34} />
+          <div className="text-[11px] text-gray-400 mt-1">{INCIDENT_LEVELS[lv].name}</div>
+          <div className="sts-mono sts-display text-lg">{counts[lv]}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+const EMPTY_INCIDENT_FORM = () => ({ driverId: "", date: localDateStr(), time: localTimeStr(), place: "", category: "", level: 0, detail: "", cause: "", fix: "", internalNote: "" });
+
+/* ---------- ฝั่งเจ้าหน้าที่/แอดมิน: แท็บ ⚠️ เหตุการณ์ ---------- */
+function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onClear }) {
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState(EMPTY_INCIDENT_FORM);
+  const [formError, setFormError] = useState("");
+  const [fSearch, setFSearch] = useState("");
+  const [fLevel, setFLevel] = useState("all");
+  const [fCategory, setFCategory] = useState("all");
+
+  const driverOf = (id) => drivers.find((d) => d.id === id);
+  const setField = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setFormError(""); };
+
+  const openNew = () => { setForm(EMPTY_INCIDENT_FORM()); setEditingId(null); setFormError(""); setShowForm(true); };
+  const openEdit = (inc) => {
+    setForm({
+      driverId: inc.driverId || "",
+      date: inc.date || localDateStr(),
+      time: inc.time || "",
+      place: inc.place || "",
+      category: inc.category || "",
+      level: Number(inc.level) || 0,
+      detail: inc.detail || "",
+      cause: inc.cause || "",
+      fix: inc.fix || "",
+      internalNote: inc.internalNote || "",
+    });
+    setEditingId(inc.id);
+    setFormError("");
+    setShowForm(true);
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
+  };
+
+  const save = () => {
+    if (!form.driverId) return setFormError("กรุณาเลือกคนขับ");
+    if (!form.date) return setFormError("กรุณาเลือกวันที่");
+    if (!form.category) return setFormError("กรุณาเลือกหมวดเหตุการณ์");
+    if (!INCIDENT_LEVELS[form.level]) return setFormError("กรุณาเลือกระดับดาวร้าว");
+    const data = {
+      driverId: form.driverId,
+      date: form.date,
+      time: form.time || "",
+      place: form.place.trim(),
+      category: form.category,
+      level: Number(form.level),
+      detail: form.detail.trim(),
+      cause: form.cause.trim(),
+      fix: form.fix.trim(),
+      internalNote: form.internalNote.trim(),
+    };
+    if (editingId) onUpdate(editingId, data);
+    else onAdd(data);
+    setShowForm(false);
+    setEditingId(null);
+  };
+
+  const remove = (inc) => {
+    const d = driverOf(inc.driverId);
+    if (window.confirm(`ลบเหตุการณ์นี้ของ ${d ? d.name : inc.driverId} ใช่หรือไม่?`)) onDelete(inc.id);
+  };
+
+  const clearAll = () => {
+    if (!window.confirm(`ต้องการล้างข้อมูลเหตุการณ์ทั้งหมด ${incidents.length} รายการใช่หรือไม่? (ไม่กระทบดาวและการแลกรางวัล)`)) return;
+    const typed = window.prompt('ยืนยันอีกครั้ง: พิมพ์คำว่า "ลบทั้งหมด" เพื่อล้างข้อมูลเหตุการณ์ (ย้อนกลับไม่ได้)');
+    if (typed === null || typed.trim() !== "ลบทั้งหมด") {
+      window.alert("ยกเลิกการล้างข้อมูล — ยังไม่มีอะไรถูกลบ");
+      return;
+    }
+    onClear();
+  };
+
+  const q = normalizeText(fSearch);
+  const shown = sortIncidentsNewestFirst(incidents).filter((inc) => {
+    if (fLevel !== "all" && String(inc.level) !== fLevel) return false;
+    if (fCategory !== "all" && inc.category !== fCategory) return false;
+    if (q) {
+      const d = driverOf(inc.driverId);
+      const hay = normalizeText(`${d ? d.name : ""}${d ? d.plate : ""}${inc.driverId}`);
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const inputCls = "sts-card-l w-full px-3 py-2 bg-transparent text-sm";
+  const inputStyle = { color: "var(--text-primary)" };
+  const selectStyle = { background: "var(--input-bg)", color: "var(--text-primary)" };
+  const label = (t) => <div className="text-xs text-gray-500 mb-1">{t}</div>;
+
+  return (
+    <div className="p-4 space-y-3 sts-fadein">
+      <div className="text-xs text-gray-400 leading-relaxed">
+        บันทึกเหตุการณ์ความปลอดภัยของคนขับ <b>แยกจากระบบดาวทั้งหมด</b> — ไม่หักดาว ไม่กระทบคะแนนสะสม แรงค์ หรือการแลกรางวัล
+      </div>
+
+      <IncidentLevelSummary incidents={incidents} />
+
+      {!showForm && (
+        <button onClick={openNew} className="sts-btn sts-card-l w-full p-3 flex items-center justify-center gap-2 text-sm" style={{ color: "#FFC531" }}>
+          <Plus size={16} /> บันทึกเหตุการณ์ใหม่
+        </button>
+      )}
+
+      {showForm && (
+        <div className="sts-card-l p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="text-sm sts-display">{editingId ? "แก้ไขเหตุการณ์" : "บันทึกเหตุการณ์ใหม่"}</div>
+            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-gray-500"><XIcon size={16} /></button>
+          </div>
+
+          <div>
+            {label("คนขับ (พิมพ์ชื่อหรือทะเบียน)")}
+            <DriverPickerDark drivers={drivers} selectedId={form.driverId} onSelect={(id) => setField("driverId", id)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              {label("วันที่")}
+              <input type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} className={inputCls} style={inputStyle} />
+            </div>
+            <div>
+              {label("เวลา")}
+              <input type="time" value={form.time} onChange={(e) => setField("time", e.target.value)} className={inputCls} style={inputStyle} />
+            </div>
+          </div>
+
+          <div>
+            {label("สถานที่")}
+            <input value={form.place} onChange={(e) => setField("place", e.target.value)} placeholder="เช่น หน้าโรงงานลูกค้า, ลานจอด" className={inputCls} style={inputStyle} />
+          </div>
+
+          <div>
+            {label("หมวดเหตุการณ์")}
+            <select value={form.category} onChange={(e) => setField("category", e.target.value)} className="sts-card-l w-full px-3 py-2 text-sm" style={selectStyle}>
+              <option value="">— เลือกหมวด —</option>
+              {INCIDENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div>
+            {label("ระดับ (ดาวร้าว)")}
+            <div className="grid grid-cols-4 gap-2">
+              {INCIDENT_LEVEL_KEYS.map((lv) => {
+                const selected = form.level === lv;
+                return (
+                  <button
+                    key={lv}
+                    type="button"
+                    onClick={() => setField("level", lv)}
+                    className="sts-btn p-2 rounded-lg flex flex-col items-center"
+                    style={{ border: selected ? "2px solid #FFC531" : "1px solid var(--surface-border)", background: selected ? "rgba(255,197,49,0.08)" : "var(--input-bg)" }}
+                  >
+                    <CrackStar level={lv} size={34} />
+                    <span className="text-[11px] mt-1" style={{ color: "var(--text-primary)" }}>ระดับ {lv}</span>
+                    <span className="text-[10px] text-gray-500">{INCIDENT_LEVELS[lv].name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            {label("รายละเอียดเหตุการณ์")}
+            <textarea rows={3} value={form.detail} onChange={(e) => setField("detail", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+          <div>
+            {label("สาเหตุ (เฉพาะเจ้าหน้าที่)")}
+            <textarea rows={2} value={form.cause} onChange={(e) => setField("cause", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+          <div>
+            {label("แนวทางแก้ไข (คนขับเห็น)")}
+            <textarea rows={3} value={form.fix} onChange={(e) => setField("fix", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+          <div>
+            {label("🔒 หมายเหตุภายใน (คนขับไม่เห็น)")}
+            <textarea rows={2} value={form.internalNote} onChange={(e) => setField("internalNote", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+          </div>
+
+          {formError && <div className="text-xs" style={{ color: "#FF6B6B" }}>{formError}</div>}
+          <button onClick={save} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+            {editingId ? "บันทึกการแก้ไข" : "บันทึกเหตุการณ์"}
+          </button>
+        </div>
+      )}
+
+      {/* ตัวกรอง */}
+      <input value={fSearch} onChange={(e) => setFSearch(e.target.value)} placeholder="ค้นหาคนขับ (ชื่อ / ทะเบียน)..." className={inputCls} style={inputStyle} />
+      <div className="grid grid-cols-2 gap-2">
+        <select value={fLevel} onChange={(e) => setFLevel(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
+          <option value="all">ทุกระดับ</option>
+          {INCIDENT_LEVEL_KEYS.map((lv) => <option key={lv} value={String(lv)}>ระดับ {lv} · {INCIDENT_LEVELS[lv].name}</option>)}
+        </select>
+        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
+          <option value="all">ทุกหมวด</option>
+          {INCIDENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="text-xs text-gray-500">แสดง {shown.length} จาก {incidents.length} รายการ</div>
+
+      {shown.length === 0 && <div className="text-center text-sm text-gray-500 py-8">{incidents.length === 0 ? "ยังไม่มีการบันทึกเหตุการณ์" : "ไม่พบรายการตามที่กรอง"}</div>}
+
+      <div className="space-y-2">
+        {shown.map((inc) => {
+          const d = driverOf(inc.driverId);
+          const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+          return (
+            <div key={inc.id} className="sts-card-l p-3">
+              <div className="flex items-start gap-3">
+                <CrackStar level={inc.level} size={38} />
+                <div className="flex-1 min-w-0">
+                  <div className="sts-display text-sm">ระดับ {info.level} · {info.name}</div>
+                  <div className="text-sm">{d ? d.name : inc.driverId} {d && d.plate ? <span className="text-gray-500 text-xs sts-mono">({d.plate})</span> : null}</div>
+                  <div className="text-xs text-gray-500">{inc.category} · {formatIncidentDate(inc.date)}{inc.time ? ` เวลา ${inc.time}` : ""}{inc.place ? ` · 📍 ${inc.place}` : ""}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => openEdit(inc)} className="text-gray-400"><Pencil size={16} /></button>
+                  <button onClick={() => remove(inc)} className="text-gray-400"><Trash2 size={16} /></button>
+                </div>
+              </div>
+              {(inc.detail || inc.cause || inc.fix || inc.internalNote) && (
+                <div className="mt-2 pt-2 space-y-1 text-xs" style={{ borderTop: "1px dashed var(--surface-border)" }}>
+                  {inc.detail && <div><span className="text-gray-500">รายละเอียด:</span> {inc.detail}</div>}
+                  {inc.cause && <div><span className="text-gray-500">สาเหตุ:</span> {inc.cause}</div>}
+                  {inc.fix && <div><span className="text-gray-500">แนวทางแก้ไข:</span> {inc.fix}</div>}
+                  {inc.internalNote && <div style={{ color: "#E0A400" }}>🔒 ภายใน: {inc.internalNote}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {incidents.length > 0 && (
+        <div className="text-center pt-2">
+          <button onClick={clearAll} className="text-xs" style={{ color: "#FF6B6B" }}>ล้างข้อมูลเหตุการณ์ทั้งหมด</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------- ฝั่งคนขับ: หน้า "เรื่องที่ต้องปรับปรุง" (เปิดดูได้ทันทีเมื่อเข้าสมุดของตัวเอง ไม่ต้องใช้รหัส) ---------- */
+function IncidentsView({ incidents, setView, theme, onToggleTheme }) {
+  const mine = sortIncidentsNewestFirst(incidents);
+  const days = mine.length > 0 ? daysSinceDate(mine[0].date) : 0;
+
+  return (
+    <div className="pb-24 sts-fadein">
+      <TopBarLight title="⚠️ เรื่องที่ต้องปรับปรุง" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
+      <div className="p-4">
+        <div className="space-y-3">
+          {mine.length === 0 ? (
+            <div className="sts-card-l-raised p-6 text-center">
+              <div className="text-5xl mb-2">🌟</div>
+              <div className="sts-display text-base mb-1">ยอดเยี่ยมมาก!</div>
+              <div className="text-sm text-gray-500 leading-relaxed">ยังไม่มีเรื่องที่ต้องปรับปรุง รักษามาตรฐานการขับขี่ปลอดภัยแบบนี้ต่อไปนะคะ</div>
+            </div>
+          ) : (
+            <React.Fragment>
+              <div className="sts-card-l-raised p-4 text-center">
+                <div className="text-xs text-gray-500 mb-1">ปลอดเหตุการณ์มาแล้ว</div>
+                <div className="sts-mono sts-display" style={{ fontSize: 40, lineHeight: 1, color: "var(--accent)" }}>{days} <span className="text-lg">วัน</span></div>
+                <div className="text-[11px] text-gray-400 mt-1">นับจากเหตุการณ์ล่าสุด</div>
+              </div>
+              {mine.map((inc) => {
+                const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+                return (
+                  <div key={inc.id} className="sts-card-l p-4">
+                    <div className="flex items-center gap-3 mb-2">
+                      <CrackStar level={inc.level} size={40} />
+                      <div className="flex-1 min-w-0">
+                        <div className="sts-display text-sm">ระดับ {info.level} · {info.name}</div>
+                        <div className="text-xs text-gray-500">{inc.category}</div>
+                      </div>
+                      <div className="text-xs text-gray-400 sts-mono text-right">{formatIncidentDate(inc.date)}{inc.time ? <div>{inc.time}</div> : null}</div>
+                    </div>
+                    {inc.place && <div className="text-xs text-gray-500 mb-1">📍 {inc.place}</div>}
+                    {inc.detail && <div className="text-sm mb-2" style={{ whiteSpace: "pre-wrap" }}>{inc.detail}</div>}
+                    {inc.fix && (
+                      <div className="text-sm p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                        <div className="text-xs text-gray-500 mb-1">แนวทางแก้ไข</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{inc.fix}</div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </React.Fragment>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /* ============================= DATA MODEL ============================= */
 
@@ -323,7 +705,6 @@ const firebaseConfig = {
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
 };
-
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
@@ -368,17 +749,18 @@ function BottomNav({ view, setView }) {
     { key: "mystar", label: "ดาวของฉัน", icon: Star },
     { key: "history", label: "ประวัติ", icon: ClipboardList },
     { key: "reward", label: "แรงค์", icon: Trophy },
+    { key: "incidents", label: "เรื่องที่ต้อง", label2: "ปรับปรุง", icon: AlertIcon },
   ];
   return (
     <div className="fixed bottom-0 left-0 right-0 sts-card-l-raised" style={{ borderRadius: 0, borderLeft: "none", borderRight: "none", borderBottom: "none", maxWidth: 480, margin: "0 auto" }}>
-      <div className="flex justify-around py-2">
+      <div className="flex justify-around items-start py-2">
         {items.map((it) => {
           const Icon = it.icon;
           const active = view === it.key;
           return (
-            <button key={it.key} onClick={() => setView(it.key)} className="sts-btn flex flex-col items-center gap-1 px-2 py-1" style={{ color: active ? "var(--accent)" : "#9CA3AF" }}>
+            <button key={it.key} onClick={() => setView(it.key)} aria-label={it.label2 ? `${it.label}${it.label2}` : it.label} className="sts-btn flex flex-col items-center gap-1 px-2 py-1" style={{ color: active ? "var(--accent)" : "#9CA3AF" }}>
               <Icon size={20} />
-              <span className="text-[10px]">{it.label}</span>
+              <span className="text-[10px] text-center" style={{ lineHeight: 1.2 }}>{it.label}{it.label2 ? <React.Fragment><br />{it.label2}</React.Fragment> : null}</span>
             </button>
           );
         })}
@@ -887,7 +1269,7 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
   const selected = drivers.find((d) => d.id === selectedId);
   const query = normalizeText(q);
   const matches = query.length >= 1
-    ? drivers.filter((d) => normalizeText(d.name).includes(query) || normalizeText(d.id).includes(query)).slice(0, 8)
+    ? drivers.filter((d) => normalizeText(d.name).includes(query) || normalizeText(d.id).includes(query) || normalizeText(d.plate).includes(query)).slice(0, 8)
     : [];
 
   if (selected && !open) {
@@ -905,7 +1287,7 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
         autoFocus={open}
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="พิมพ์ชื่อคนขับ..."
+        placeholder="พิมพ์ชื่อหรือทะเบียนคนขับ..."
         className="sts-card-l w-full px-3 py-2 bg-transparent text-sm"
         style={{ color: "var(--text-primary)" }}
       />
@@ -919,7 +1301,7 @@ function DriverPickerDark({ drivers, selectedId, onSelect }) {
               className="sts-btn w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2"
               style={{ background: "var(--input-bg)", color: "var(--text-primary)" }}
             >
-              <span>{DRIVER_AVATAR}</span> {d.name} <span className="text-gray-500 text-xs sts-mono">({d.id})</span>
+              <span>{DRIVER_AVATAR}</span> {d.name} <span className="text-gray-500 text-xs sts-mono">({d.plate || d.id})</span>
             </button>
           ))}
         </div>
@@ -981,7 +1363,7 @@ function EditLogModal({ log, drivers, onSave, onDelete, onClose }) {
   );
 }
 
-function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onMarkRedemptionPicked, staffPin, onChangeStaffPin, levelCosts, onSaveLevelCosts, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, onBackfillQuestLinks, archives, onArchiveAndResetYear, theme, onToggleTheme }) {
+function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetStars, rewardConfig, setRewardConfig, redemptions, onCancelRedemption, onMarkRedemptionPicked, staffPin, onChangeStaffPin, levelCosts, onSaveLevelCosts, onResetRedemptions, onUpdateLog, onDeleteLog, quests, onAddQuest, onUpdateQuest, onDeleteQuest, onBackfillQuestLinks, archives, onArchiveAndResetYear, incidents, onAddIncident, onUpdateIncident, onDeleteIncident, onClearIncidents, theme, onToggleTheme }) {
   const [openArchiveId, setOpenArchiveId] = useState(null);
   const [tab, setTab] = useState("share");
   const [redFilter, setRedFilter] = useState("pending"); // pending | picked | all
@@ -1341,7 +1723,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
     <div className={`min-h-screen sts-light ${themeClass} pb-10`}>
       <TopBarDark title="แผงควบคุมผู้ดูแลระบบ" theme={theme} onToggleTheme={onToggleTheme} right={<React.Fragment><button onClick={onBack} className="text-gray-400 text-sm flex items-center gap-1"><ChevronLeft size={16} />กลับ</button><button onClick={exit} className="text-gray-400 text-sm flex items-center gap-1"><LogOut size={16} />ออก</button></React.Fragment>} />
       <div className="flex gap-2 px-4 pt-3 overflow-x-auto sts-scroll">
-        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: `📦 รายการแลกรางวัล${redPendingAll > 0 ? ` (รอรับ ${redPendingAll})` : ""}` }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }, { k: "archives", l: "📚 ประวัติปีก่อน" }, { k: "settings", l: "⚙️ ตั้งค่า" }].map((t) => (
+        {[{ k: "share", l: "🔗 แชร์ลิงก์" }, { k: "demo", l: "🎯 เควสกิจกรรม" }, { k: "rewards", l: "🎁 จัดการรางวัล" }, { k: "redemptions", l: `📦 รายการแลกรางวัล${redPendingAll > 0 ? ` (รอรับ ${redPendingAll})` : ""}` }, { k: "incidents", l: "⚠️ เหตุการณ์" }, { k: "logs", l: "📋 บันทึกดาว" }, { k: "drivers", l: "👷 รายชื่อคนขับ" }, { k: "archives", l: "📚 ประวัติปีก่อน" }, { k: "settings", l: "⚙️ ตั้งค่า" }].map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)} className="sts-btn px-4 py-2 rounded-full text-sm whitespace-nowrap" style={{ background: tab === t.k ? "#FFC531" : "var(--surface)", color: tab === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
         ))}
       </div>
@@ -1796,6 +2178,10 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
         </div>
       )}
 
+      {tab === "incidents" && (
+        <IncidentsAdminTab drivers={drivers} incidents={incidents || []} onAdd={onAddIncident} onUpdate={onUpdateIncident} onDelete={onDeleteIncident} onClear={onClearIncidents} />
+      )}
+
       {tab === "logs" && (
         <div className="p-4 space-y-2 sts-fadein">
           <input
@@ -2047,7 +2433,7 @@ function AdminView({ drivers, setDrivers, logs, addStar, exit, onBack, onResetSt
   );
 }
 
-function SupervisorView({ drivers, logs, leaderboard, exit, onBack, theme, onToggleTheme }) {
+function SupervisorView({ drivers, logs, leaderboard, incidents, exit, onBack, theme, onToggleTheme }) {
   const totalStars = logs.reduce((s, l) => s + l.amount, 0);
   const byType = Object.fromEntries(STAR_ORDER.map((k) => [k, logs.filter((l) => l.type === k).reduce((s, l) => s + l.amount, 0)]));
   const topDriver = leaderboard[0];
@@ -2099,6 +2485,30 @@ function SupervisorView({ drivers, logs, leaderboard, exit, onBack, theme, onTog
           );
         })}
       </div>
+      <div className="px-4 mt-1">
+        <div className="text-xs text-gray-500 mb-2 px-1">⚠️ เหตุการณ์ความปลอดภัย (แยกจากระบบดาว) · ทั้งหมด {(incidents || []).length} รายการ</div>
+        <IncidentLevelSummary incidents={incidents || []} />
+        {(incidents || []).length > 0 && (
+          <div className="space-y-2 mt-3">
+            <div className="text-xs text-gray-500 px-1">เหตุการณ์ล่าสุด</div>
+            {sortIncidentsNewestFirst(incidents || []).slice(0, 5).map((inc) => {
+              const d = drivers.find((x) => x.id === inc.driverId);
+              const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+              return (
+                <div key={inc.id} className="sts-card-l p-3 flex items-start gap-3">
+                  <CrackStar level={inc.level} size={32} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm">{d ? d.name : inc.driverId} <span className="text-gray-500 text-xs">· ระดับ {info.level} {info.name}</span></div>
+                    <div className="text-xs text-gray-500">{inc.category} · {formatIncidentDate(inc.date)}{inc.place ? ` · 📍 ${inc.place}` : ""}</div>
+                    {inc.detail && <div className="text-xs text-gray-400 mt-0.5">{inc.detail}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {topDriver && (
         <div className="px-4">
           <div className="sts-card-l-raised p-4 mt-2">
@@ -2421,6 +2831,7 @@ function App() {
   const [redemptions, setRedemptions] = useState({});
   const [quests, setQuests] = useState([]);
   const [archives, setArchives] = useState([]);
+  const [incidents, setIncidents] = useState([]); // เหตุการณ์ความปลอดภัย (แยกจากระบบดาว)
   const [staffPin, setStaffPin] = useState(STAFF_PIN); // PIN ปัจจุบัน (แก้ได้จากหลังบ้าน เก็บที่ Firebase: settings/staffPin)
   const [levelCosts, setLevelCosts] = useState(DEFAULT_LEVEL_COSTS); // ดาวของแต่ละขั้น (แก้ได้จากหลังบ้าน: settings/levelCosts)
   const [settingsReady, setSettingsReady] = useState(false);
@@ -2453,6 +2864,7 @@ function App() {
     const questsRef = db.ref("quests");
     const archivesRef = db.ref("archives");
     const settingsRef = db.ref("settings");
+    const incidentsRef = db.ref("incidents");
 
     driversRef.once("value").then((snap) => {
       if (!snap.exists()) {
@@ -2501,6 +2913,10 @@ function App() {
       );
     });
 
+    const onIncidents = incidentsRef.on("value", (snap) => {
+      const val = snap.val() || {};
+      setIncidents(Object.keys(val).map((k) => ({ ...val[k], id: k })));
+    });
     const onSettings = settingsRef.on(
       "value",
       (snap) => {
@@ -2513,6 +2929,7 @@ function App() {
     );
 
     return () => {
+      incidentsRef.off("value", onIncidents);
       settingsRef.off("value", onSettings);
       driversRef.off("value", onDrivers);
       logsRef.off("value", onLogs);
@@ -2542,6 +2959,20 @@ function App() {
     db.ref(`redemptions/${driverId}/${redemptionKey}`).update(
       picked ? { status: "picked", pickedAt: new Date().toISOString() } : { status: "pending", pickedAt: null }
     );
+  }
+
+  // เหตุการณ์ความปลอดภัย: เขียนที่ node "incidents" เท่านั้น ไม่แตะ logs/redemptions
+  function addIncident(data) {
+    if (db) db.ref("incidents").push({ ...data, createdAt: new Date().toISOString() });
+  }
+  function updateIncident(id, data) {
+    if (db) db.ref(`incidents/${id}`).update({ ...data, updatedAt: new Date().toISOString() });
+  }
+  function deleteIncident(id) {
+    if (db) db.ref(`incidents/${id}`).remove();
+  }
+  function clearIncidents() {
+    if (db) db.ref("incidents").set({});
   }
 
   function saveLevelCosts(costs) {
@@ -2748,9 +3179,9 @@ function App() {
 
   if (role === "tv") return <LeaderboardTV leaderboard={leaderboard} todayTotalAll={todayTotalAll} exit={backToStaffMenu} />;
 
-  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onMarkRedemptionPicked={markRedemptionPicked} staffPin={staffPin} onChangeStaffPin={changeStaffPin} levelCosts={levelCosts} onSaveLevelCosts={saveLevelCosts} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} onBackfillQuestLinks={backfillQuestLinks} archives={archives} onArchiveAndResetYear={archiveAndResetYear} theme={theme} onToggleTheme={toggleTheme} />;
+  if (role === "admin") return <AdminView drivers={drivers} setDrivers={persistDrivers} logs={logs} addStar={addStar} exit={exitToLogin} onBack={backToStaffMenu} onResetStars={resetAllStars} rewardConfig={rewardConfig} setRewardConfig={persistRewardConfig} redemptions={redemptions} onCancelRedemption={cancelRedemption} onMarkRedemptionPicked={markRedemptionPicked} staffPin={staffPin} onChangeStaffPin={changeStaffPin} levelCosts={levelCosts} onSaveLevelCosts={saveLevelCosts} onResetRedemptions={resetAllRedemptions} onUpdateLog={updateLog} onDeleteLog={deleteLog} quests={quests} onAddQuest={addQuest} onUpdateQuest={updateQuest} onDeleteQuest={deleteQuest} onBackfillQuestLinks={backfillQuestLinks} archives={archives} onArchiveAndResetYear={archiveAndResetYear} incidents={incidents} onAddIncident={addIncident} onUpdateIncident={updateIncident} onDeleteIncident={deleteIncident} onClearIncidents={clearIncidents} theme={theme} onToggleTheme={toggleTheme} />;
 
-  if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} exit={exitToLogin} onBack={backToStaffMenu} theme={theme} onToggleTheme={toggleTheme} />;
+  if (role === "supervisor") return <SupervisorView drivers={drivers} logs={logs} leaderboard={leaderboard} incidents={incidents} exit={exitToLogin} onBack={backToStaffMenu} theme={theme} onToggleTheme={toggleTheme} />;
 
   const driver = drivers.find((d) => d.id === currentDriverId);
   if (!driver) return <LoginView staffPin={staffPin} drivers={drivers} onEnter={(r, id) => { setRole(r); setCurrentDriverId(id); }} theme={theme} onToggleTheme={toggleTheme} />;
@@ -2764,6 +3195,7 @@ function App() {
       {view === "mystar" && <MyStar totals={totals} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "history" && <History logs={logs} driverId={currentDriverId} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       {view === "reward" && <RankView totals={totals} tokens={tokens} setView={setView} driverId={currentDriverId} rewardConfig={rewardConfig} myRedemptionHistory={redemptions[currentDriverId] || {}} pastRedemptions={pastRedemptionsOf(currentDriverId)} onRedeem={redeemReward} theme={theme} onToggleTheme={toggleTheme} />}
+      {view === "incidents" && <IncidentsView incidents={incidents.filter((i) => i.driverId === currentDriverId)} setView={setView} theme={theme} onToggleTheme={toggleTheme} />}
       <BottomNav view={view} setView={setView} />
       {levelUpInfo && <LevelUpCelebration level={levelUpInfo} onClose={() => setLevelUpInfo(null)} />}
     </div>
