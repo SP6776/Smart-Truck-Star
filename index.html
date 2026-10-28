@@ -38,6 +38,8 @@
     --modal-bg: rgba(20,18,10,0.6); --modal-card-bg: #FFFDF7; --modal-card-border: #EDE9DF;
     --input-bg: #FFFFFF;
   }
+  /* กระโหลกระดับ 4 (ดำ) ในโหมดกลางคืน: เพิ่มขอบสีอ่อนให้มองเห็น */
+  .theme-night .sts-skull-4 path { stroke: #C4C9D1; stroke-width: 3.2; stroke-linejoin: round; }
   .theme-night {
     --bg: #0B0D0F; --surface: #15181C; --surface-border: #262B31; --surface-raised-border: #2A2F35;
     --text-primary: #F2F3F4; --accent: #FFC531; --muted-icon: #4A5560;
@@ -105,10 +107,20 @@ const LinkIcon = (p) => <IconBase {...p}>🔗</IconBase>;
 const Trophy = (p) => <IconBase {...p}>🏆</IconBase>;
 const AlertIcon = (p) => <IconBase {...p}>⚠️</IconBase>;
 
-/* ============================= เหตุการณ์ความปลอดภัย (Incident) =============================
+/* ============================= เหตุการณ์ความปลอดภัย (Incident / Accident) =============================
    แยกจากระบบดาวรางวัลโดยสิ้นเชิง: เก็บที่ Firebase node "incidents" เท่านั้น
-   ไม่หักดาว ไม่กระทบคะแนนสะสม/แรงค์/โทเคน/การแลกรางวัล */
+   ไม่หักดาว ไม่กระทบคะแนนสะสม/แรงค์/โทเคน/การแลกรางวัล
 
+   ⚙️ ค่าที่แก้ไขได้ง่าย (อยู่ตรงนี้ที่เดียว) -------------------------------------------- */
+
+// เกณฑ์จำนวนเงินความเสียหายของทรัพย์สิน (บาท): ต่ำกว่า minorMax = เล็กน้อย / ถึง moderateMax = ปานกลาง / มากกว่านั้น = สูง
+// (ใช้เป็นคำอธิบายในฟอร์มให้เจ้าหน้าที่เลือกระดับความเสียหาย ระบบไม่ได้ให้กรอกจำนวนเงิน)
+const PROPERTY_DAMAGE_THRESHOLDS = { minorMax: 5000, moderateMax: 50000 };
+
+// กฎ "เกิดซ้ำภายใน N วัน เพิ่ม 1 ระดับ (ไม่เกินระดับ 4)" — เปลี่ยน enabled เป็น true เพื่อเปิดใช้ (ค่าเริ่มต้น: ปิด)
+const REPEAT_ESCALATION = { enabled: false, withinDays: 90 };
+
+// ระดับกระโหลก 4 ระดับ (ชื่อ + สี)
 const INCIDENT_LEVELS = {
   1: { level: 1, name: "เล็กน้อย", color: "#D4B25C" },
   2: { level: 2, name: "ปานกลาง", color: "#CC8A4E" },
@@ -116,21 +128,45 @@ const INCIDENT_LEVELS = {
   4: { level: 4, name: "ร้ายแรง", color: "#2E2E2E" },
 };
 const INCIDENT_LEVEL_KEYS = [1, 2, 3, 4];
-const INCIDENT_CATEGORIES = ["คอมเพลนจากลูกค้า", "แต่งกายไม่ปลอดภัย / PPE", "ขับขี่", "อุบัติเหตุ", "อื่นๆ"];
 
-// พิกัดดาว 5 แฉก (กึ่งกลาง 50,53 / รัศมีนอก 46 / รัศมีใน 19)
-const CRACK_STAR_POINTS = (() => {
-  const pts = [];
-  for (let i = 0; i < 10; i++) {
-    const ang = ((-90 + i * 36) * Math.PI) / 180;
-    const r = i % 2 === 0 ? 46 : 19;
-    pts.push(`${(50 + r * Math.cos(ang)).toFixed(1)},${(53 + r * Math.sin(ang)).toFixed(1)}`);
-  }
-  return pts.join(" ");
-})();
+const fmtBaht = (n) => Number(n).toLocaleString("th-TH");
+const PROPERTY_LEVELS = [
+  { key: "minor", label: "เล็กน้อย", hint: `ต่ำกว่า ${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.minorMax)} บาท` },
+  { key: "moderate", label: "ปานกลาง", hint: `${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.minorMax)}-${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.moderateMax)} บาท` },
+  { key: "high", label: "สูง", hint: `มากกว่า ${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.moderateMax)} บาท` },
+];
+const INJURY_LEVELS = [
+  { key: "firstaid", label: "ปฐมพยาบาล" },
+  { key: "doctor", label: "พบแพทย์" },
+  { key: "severe", label: "สาหัสหรือเสียชีวิต" },
+];
+const INCIDENT_TYPES = {
+  incident: { key: "incident", label: "Incident", desc: "เหตุการณ์ไม่มีบาดเจ็บ เกือบเกิดหรือผิดระเบียบ" },
+  accident: { key: "accident", label: "Accident", desc: "เกิดความเสียหายหรือบาดเจ็บจริง" },
+};
+const INCIDENT_TOPICS = [
+  { key: "complaint", label: "คอมเพลนจากลูกค้า" },
+  { key: "behavior", label: "พฤติกรรมไม่เหมาะสม", hint: "รวมแต่งกายไม่ปลอดภัย PPE ขับเร็ว ฝ่าฝืนกฎ" },
+  { key: "other", label: "อื่นๆ" },
+];
+const INCIDENT_SOURCES = ["ลูกค้าแจ้ง", "รปภ.", "กล้องวงจรปิด", "เจ้าหน้าที่สังเกตเอง"];
+const INCIDENT_PERIODS = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "30d", label: "30 วัน" },
+  { key: "90d", label: "90 วัน" },
+  { key: "year", label: "ปีนี้" },
+];
 
-// "ดาวร้าว": ดาว 5 แฉกที่มีรอยแตกตรงกลาง สีหม่นตามระดับ (ต่างจากดาวรางวัลสีทองที่เรียบ)
-function CrackStar({ level = 1, size = 28 }) {
+// พิกัดกระโหลก (วาดเอง): ตัวกะโหลก + เบ้าตา 2 ข้าง + จมูก + ซี่ฟัน เป็นช่องเจาะทะลุ (เห็นสีพื้นหลังของหน้าจอเอง)
+const SKULL_PATH =
+  "M50 6 C26 6 10 23 10 44 C10 57 16 66 25 71 L25 84 Q25 90 31 90 L69 90 Q75 90 75 84 L75 71 C84 66 90 57 90 44 C90 23 74 6 50 6 Z " +
+  "M24 47 a10 11 0 1 0 20 0 a10 11 0 1 0 -20 0 Z " +
+  "M56 47 a10 11 0 1 0 20 0 a10 11 0 1 0 -20 0 Z " +
+  "M50 58 L43 71 Q43 73 45 73 L55 73 Q57 73 57 71 Z " +
+  "M38 79 h4 v8 h-4 Z M48 79 h4 v8 h-4 Z M58 79 h4 v8 h-4 Z";
+
+// "กระโหลก": สีตามระดับ เบ้าตา/จมูกเป็นช่องโปร่ง (เห็นสีพื้นหลัง) ระดับ 4 (ดำ) ในโหมดกลางคืนมีขอบสีอ่อน (CSS .sts-skull-4)
+function SkullIcon({ level = 1, size = 28 }) {
   const info = INCIDENT_LEVELS[level] || INCIDENT_LEVELS[1];
   return (
     <svg
@@ -138,15 +174,16 @@ function CrackStar({ level = 1, size = 28 }) {
       height={size}
       viewBox="0 0 100 100"
       role="img"
-      aria-label={`ดาวร้าว ระดับ ${info.level} ${info.name}`}
-      style={{ display: "inline-block", flexShrink: 0, filter: info.level === 4 ? "drop-shadow(0 0 1.5px rgba(255,255,255,0.55))" : "none" }}
+      aria-label={`กระโหลก ระดับ ${info.level} ${info.name}`}
+      className={`sts-skull sts-skull-${info.level}`}
+      style={{ display: "inline-block", flexShrink: 0 }}
     >
-      <polygon points={CRACK_STAR_POINTS} fill={info.color} stroke={info.color} strokeWidth="5" strokeLinejoin="round" />
-      <path d="M51 22 L45 36 L55 45 L45 58 L53 70" fill="none" stroke="#FFFFFF" strokeWidth="3.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.92" />
+      <path d={SKULL_PATH} fill={info.color} fillRule="evenodd" />
     </svg>
   );
 }
 
+/* ---------- วันที่/เวลา (ใช้เวลาท้องถิ่นของเครื่อง) ---------- */
 const localDateStr = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const localTimeStr = (d = new Date()) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 
@@ -158,12 +195,15 @@ function formatIncidentDate(str) {
   const d = parseLocalDate(str);
   return d ? d.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" }) : str || "";
 }
+function daysBetweenDates(fromStr, toStr) {
+  const a = parseLocalDate(fromStr);
+  const b = parseLocalDate(toStr);
+  if (!a || !b) return NaN;
+  return Math.round((b - a) / 86400000);
+}
 function daysSinceDate(str) {
-  const d = parseLocalDate(str);
-  if (!d) return 0;
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  return Math.max(0, Math.round((today - d) / 86400000));
+  const d = daysBetweenDates(str, localDateStr());
+  return isNaN(d) ? 0 : Math.max(0, d);
 }
 function sortIncidentsNewestFirst(list) {
   return [...list].sort((a, b) => `${b.date || ""} ${b.time || ""} ${b.createdAt || ""}`.localeCompare(`${a.date || ""} ${a.time || ""} ${a.createdAt || ""}`));
@@ -173,15 +213,85 @@ function countIncidentsByLevel(list) {
   list.forEach((i) => { if (c[i.level] !== undefined) c[i.level] += 1; });
   return c;
 }
+function filterIncidentsByPeriod(list, period) {
+  if (period === "all") return list;
+  const today = localDateStr();
+  if (period === "year") return list.filter((i) => (i.date || "").slice(0, 4) === today.slice(0, 4));
+  const d = new Date();
+  d.setDate(d.getDate() - (period === "30d" ? 30 : 90));
+  const from = localDateStr(d);
+  return list.filter((i) => (i.date || "") >= from);
+}
 
-// แถบสรุปจำนวนเหตุการณ์ตามระดับ (ดาวร้าว + ชื่อระดับ + จำนวน)
-function IncidentLevelSummary({ incidents }) {
+/* ---------- คำนวณระดับกระโหลกอัตโนมัติ (ฟังก์ชันเดียว แก้เกณฑ์ที่นี่) ----------
+   ระดับ 1: Incident ที่ไม่มีความเสียหาย
+   ระดับ 2: Accident ที่ทรัพย์สินเสียหายเล็กน้อย/ปานกลาง หรือบาดเจ็บแค่ปฐมพยาบาล
+   ระดับ 3: Accident ที่ทรัพย์สินเสียหายสูง หรือบาดเจ็บถึงพบแพทย์
+   ระดับ 4: บาดเจ็บสาหัสหรือเสียชีวิต
+   ถ้าข้อมูลยังไม่ครบ คืนค่า null
+   history = รายการเหตุการณ์อื่นๆ ของคนขับคนเดียวกัน (ใช้กับกฎเกิดซ้ำ REPEAT_ESCALATION เมื่อเปิดใช้) */
+function calcLevel(input, history) {
+  const { type, damage, propertyLevel, injuryLevel } = input || {};
+  let level = 0;
+  let reason = "";
+  if (type === "incident" && damage === "none") {
+    level = 1; reason = "Incident ไม่มีความเสียหาย";
+  } else if (type === "accident" && damage === "property") {
+    if (propertyLevel === "minor") { level = 2; reason = "Accident ทรัพย์สินเสียหายเล็กน้อย"; }
+    else if (propertyLevel === "moderate") { level = 2; reason = "Accident ทรัพย์สินเสียหายปานกลาง"; }
+    else if (propertyLevel === "high") { level = 3; reason = "Accident ทรัพย์สินเสียหายสูง"; }
+  } else if (type === "accident" && damage === "injury") {
+    if (injuryLevel === "firstaid") { level = 2; reason = "Accident บาดเจ็บแค่ปฐมพยาบาล"; }
+    else if (injuryLevel === "doctor") { level = 3; reason = "Accident บาดเจ็บถึงพบแพทย์"; }
+    else if (injuryLevel === "severe") { level = 4; reason = "บาดเจ็บสาหัสหรือเสียชีวิต"; }
+  }
+  if (!level) return null;
+
+  if (REPEAT_ESCALATION.enabled && level < 4 && input.driverId && input.date) {
+    const repeated = (history || []).some((o) => {
+      if (o.id && o.id === input.id) return false;
+      if (o.driverId !== input.driverId) return false;
+      const gap = daysBetweenDates(o.date, input.date);
+      return !isNaN(gap) && gap >= 0 && gap <= REPEAT_ESCALATION.withinDays && (gap > 0 || (o.time || "") <= (input.time || ""));
+    });
+    if (repeated) {
+      level += 1;
+      reason += ` + เกิดซ้ำภายใน ${REPEAT_ESCALATION.withinDays} วัน (เพิ่ม 1 ระดับ)`;
+    }
+  }
+  return { level, reason };
+}
+
+/* ---------- ข้อความแสดงผลของเหตุการณ์ (รองรับข้อมูลเก่าที่ยังไม่มีฟิลด์ใหม่) ---------- */
+function incidentTopicsList(inc) {
+  const keys = Array.isArray(inc.topics) ? inc.topics : [];
+  const labels = keys.map((k) => (INCIDENT_TOPICS.find((t) => t.key === k) || {}).label).filter(Boolean);
+  if (labels.length === 0 && inc.category) labels.push(inc.category); // ข้อมูลรุ่นก่อนหน้าใช้ฟิลด์ category
+  return labels;
+}
+function incidentDamageText(inc) {
+  if (inc.damage === "property") {
+    const p = PROPERTY_LEVELS.find((x) => x.key === inc.propertyLevel);
+    return `ทรัพย์สินเสียหาย${p ? ` · ${p.label}` : ""}`;
+  }
+  if (inc.damage === "injury") {
+    const j = INJURY_LEVELS.find((x) => x.key === inc.injuryLevel);
+    return `บาดเจ็บ${j ? ` · ${j.label}` : ""}`;
+  }
+  return "";
+}
+function incidentTypeLabel(inc) {
+  return INCIDENT_TYPES[inc.type] ? INCIDENT_TYPES[inc.type].label : "";
+}
+
+/* ---------- แถบสรุปกระโหลก 4 สี + จำนวน (0 = สีจาง) ---------- */
+function IncidentLevelSummary({ incidents, size = 34 }) {
   const counts = countIncidentsByLevel(incidents);
   return (
     <div className="grid grid-cols-4 gap-2">
       {INCIDENT_LEVEL_KEYS.map((lv) => (
-        <div key={lv} className="sts-card-l p-2 flex flex-col items-center text-center">
-          <CrackStar level={lv} size={34} />
+        <div key={lv} className="sts-card-l p-2 flex flex-col items-center text-center" style={{ opacity: counts[lv] === 0 ? 0.45 : 1 }}>
+          <SkullIcon level={lv} size={size} />
           <div className="text-[11px] text-gray-400 mt-1">{INCIDENT_LEVELS[lv].name}</div>
           <div className="sts-mono sts-display text-lg">{counts[lv]}</div>
         </div>
@@ -190,34 +300,205 @@ function IncidentLevelSummary({ incidents }) {
   );
 }
 
-const EMPTY_INCIDENT_FORM = () => ({ driverId: "", date: localDateStr(), time: localTimeStr(), place: "", category: "", level: 0, detail: "", cause: "", fix: "", internalNote: "" });
+/* ---------- การ์ดเหตุการณ์แบบย่อ (ใช้ในตารางสรุปเมื่อกดชื่อคนขับ) ---------- */
+function IncidentCompactCard({ inc }) {
+  const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+  const topics = incidentTopicsList(inc);
+  const damage = incidentDamageText(inc);
+  return (
+    <div className="p-2 rounded-lg flex items-start gap-2" style={{ background: "var(--input-bg)" }}>
+      <SkullIcon level={inc.level} size={28} />
+      <div className="flex-1 min-w-0 text-xs">
+        <div className="flex items-center justify-between gap-2">
+          <span className="sts-display">ระดับ {info.level} · {info.name}{incidentTypeLabel(inc) ? ` · ${incidentTypeLabel(inc)}` : ""}</span>
+          <span className="text-gray-500 sts-mono whitespace-nowrap">{formatIncidentDate(inc.date)}</span>
+        </div>
+        <div className="text-gray-500">{[...topics, damage].filter(Boolean).join(" · ")}</div>
+        {inc.detail && <div className="text-gray-400 mt-0.5" style={{ whiteSpace: "pre-wrap" }}>{inc.detail}</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- สรุปกระโหลกรายคน (ใช้ทั้งแท็บ ⚠️ เหตุการณ์ ของแอดมิน และหน้าหัวหน้างาน) ---------- */
+function SkullSummaryTable({ drivers, incidents }) {
+  const [period, setPeriod] = useState("all");
+  const [sortBy, setSortBy] = useState("total"); // total | severe
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [openId, setOpenId] = useState(null);
+
+  const filtered = filterIncidentsByPeriod(incidents, period);
+  const periodLabel = (INCIDENT_PERIODS.find((p) => p.key === period) || {}).label;
+
+  // รวมจำนวนต่อคน (1 เหตุการณ์ = 1 กระโหลกตามระดับที่ระบบคำนวณ)
+  const per = {};
+  filtered.forEach((i) => {
+    if (!per[i.driverId]) per[i.driverId] = { 1: 0, 2: 0, 3: 0, 4: 0, total: 0, items: [] };
+    if (per[i.driverId][i.level] !== undefined) per[i.driverId][i.level] += 1;
+    per[i.driverId].total += 1;
+    per[i.driverId].items.push(i);
+  });
+  const knownIds = new Set(drivers.map((d) => d.id));
+  const baseRows = drivers.map((d) => ({ driver: d, s: per[d.id] || { 1: 0, 2: 0, 3: 0, 4: 0, total: 0, items: [] } }));
+  Object.keys(per).forEach((id) => {
+    if (!knownIds.has(id)) baseRows.push({ driver: { id, name: `(ไม่พบคนขับ ${id})`, plate: "", unit: "" }, s: per[id] });
+  });
+
+  const q = normalizeText(search);
+  const rows = baseRows
+    .filter((r) => showAll || r.s.total > 0)
+    .filter((r) => !q || normalizeText(`${r.driver.name}${r.driver.plate}${r.driver.unit || ""}`).includes(q))
+    .sort((a, b) => {
+      if (sortBy === "severe") {
+        return (b.s[4] - a.s[4]) || (b.s[3] - a.s[3]) || (b.s.total - a.s.total) || String(a.driver.name).localeCompare(String(b.driver.name), "th");
+      }
+      return (b.s.total - a.s.total) || (b.s[4] - a.s[4]) || (b.s[3] - a.s[3]) || String(a.driver.name).localeCompare(String(b.driver.name), "th");
+    });
+
+  const exportExcel = () => {
+    const counts = countIncidentsByLevel(filtered);
+    const head = ["ชื่อ-สกุล", "ทะเบียนรถ", "สังกัด", "ระดับ 1 เล็กน้อย", "ระดับ 2 ปานกลาง", "ระดับ 3 รุนแรง", "ระดับ 4 ร้ายแรง", "รวมทั้งหมด"];
+    const body = rows.map((r) => [r.driver.name, r.driver.plate || "", r.driver.unit || "", r.s[1], r.s[2], r.s[3], r.s[4], r.s.total]);
+    const summary = [
+      ["สรุปกระโหลกรายคน — SMART TRUCK STAR"],
+      [`ช่วงเวลา: ${periodLabel} · สรุป ณ วันที่ ${localDateStr()}`],
+      ["รวมทั้งบริษัท", `ระดับ 1: ${counts[1]}`, `ระดับ 2: ${counts[2]}`, `ระดับ 3: ${counts[3]}`, `ระดับ 4: ${counts[4]}`, `รวม: ${filtered.length}`],
+      [],
+      head,
+      ...body,
+    ];
+    const detailHead = ["วันที่", "เวลา", "ชื่อ-สกุล", "ทะเบียนรถ", "ระดับ", "ประเภท", "เรื่องที่เกิด", "ความเสียหาย", "สถานที่", "รายละเอียด", "แนวทางแก้ไข", "แหล่งที่มา", "ผู้บันทึก", "เหตุผลที่ได้ระดับ"];
+    const detail = sortIncidentsNewestFirst(filtered).map((i) => {
+      const d = drivers.find((x) => x.id === i.driverId);
+      return [i.date || "", i.time || "", d ? d.name : i.driverId, i.plate || (d ? d.plate : ""), i.level, incidentTypeLabel(i), incidentTopicsList(i).join(", "), incidentDamageText(i), i.place || "", i.detail || "", i.fix || "", i.source || "", i.recordedBy || "", i.levelReason || ""];
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "สรุปรายคน");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([detailHead, ...detail]), "รายการเหตุการณ์");
+    XLSX.writeFile(wb, `SmartTruckStar_สรุปกระโหลก_${period}_${localDateStr()}.xlsx`);
+  };
+
+  const selectStyle = { background: "var(--input-bg)", color: "var(--text-primary)" };
+  const gridCols = { display: "grid", gridTemplateColumns: "minmax(0,1fr) repeat(4, 38px) 34px", alignItems: "center", columnGap: 2 };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-1.5 overflow-x-auto sts-scroll">
+        {INCIDENT_PERIODS.map((p) => (
+          <button
+            key={p.key}
+            onClick={() => setPeriod(p.key)}
+            className="sts-btn px-3 py-1.5 rounded-full text-xs whitespace-nowrap"
+            style={{ background: period === p.key ? "#FFC531" : "var(--surface)", color: period === p.key ? "#0B0D0F" : "#9CA3AF" }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div>
+        <div className="text-xs text-gray-500 mb-1 px-1">รวมทั้งบริษัท ({periodLabel}) · {filtered.length} เหตุการณ์</div>
+        <IncidentLevelSummary incidents={filtered} />
+      </div>
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="ค้นหาชื่อ / ทะเบียน / สังกัด..."
+        className="sts-card-l w-full px-3 py-2 bg-transparent text-sm"
+        style={{ color: "var(--text-primary)" }}
+      />
+      <div className="flex items-center gap-2">
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="sts-card-l flex-1 px-3 py-2 text-sm" style={selectStyle}>
+          <option value="total">เรียง: จำนวนรวมมากสุดก่อน</option>
+          <option value="severe">เรียง: กระโหลกดำ/แดงมากสุดก่อน</option>
+        </select>
+        <button onClick={exportExcel} className="sts-btn px-3 py-2 rounded-lg text-xs flex items-center gap-1 whitespace-nowrap" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+          <Download size={14} /> Excel
+        </button>
+      </div>
+      <label className="flex items-center gap-2 text-xs text-gray-400 px-1">
+        <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+        แสดงคนขับที่ยังไม่มีเหตุการณ์ด้วย
+      </label>
+
+      <div className="sts-card-l p-2">
+        <div className="px-1 pb-2" style={{ ...gridCols, borderBottom: "1px solid var(--surface-border)" }}>
+          <div className="text-[11px] text-gray-500">คนขับ</div>
+          {INCIDENT_LEVEL_KEYS.map((lv) => (
+            <div key={lv} className="flex justify-center"><SkullIcon level={lv} size={20} /></div>
+          ))}
+          <div className="text-[11px] text-gray-500 text-center">รวม</div>
+        </div>
+        {rows.length === 0 && <div className="text-center text-sm text-gray-500 py-6">{incidents.length === 0 ? "ยังไม่มีการบันทึกเหตุการณ์" : "ไม่พบรายการ"}</div>}
+        {rows.map((r) => {
+          const isOpen = openId === r.driver.id;
+          return (
+            <div key={r.driver.id} style={{ borderBottom: "1px solid var(--surface-border)" }}>
+              <div className="px-1 py-2" style={gridCols}>
+                <button onClick={() => setOpenId(isOpen ? null : r.driver.id)} className="text-left min-w-0" disabled={r.s.total === 0} style={{ cursor: r.s.total === 0 ? "default" : "pointer" }}>
+                  <div className="text-sm truncate" style={{ color: r.s.total > 0 ? "var(--accent)" : "var(--text-primary)" }}>{r.driver.name}</div>
+                  <div className="text-[11px] text-gray-500 sts-mono truncate">{r.driver.plate}{r.driver.unit ? ` · ${r.driver.unit}` : ""}</div>
+                </button>
+                {INCIDENT_LEVEL_KEYS.map((lv) => (
+                  <div key={lv} className="flex flex-col items-center" style={{ opacity: r.s[lv] === 0 ? 0.28 : 1 }}>
+                    <SkullIcon level={lv} size={18} />
+                    <span className="sts-mono text-xs">{r.s[lv]}</span>
+                  </div>
+                ))}
+                <div className="sts-mono sts-display text-center">{r.s.total}</div>
+              </div>
+              {isOpen && (
+                <div className="space-y-1.5 pb-2 px-1">
+                  {sortIncidentsNewestFirst(r.s.items).map((inc) => <IncidentCompactCard key={inc.id} inc={inc} />)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="text-[11px] text-gray-500 px-1">1 เหตุการณ์ = 1 กระโหลก ตามระดับที่ระบบคำนวณให้ · กดที่ชื่อคนขับเพื่อดูรายการทั้งหมดของคนนั้น</div>
+    </div>
+  );
+}
+
+const EMPTY_INCIDENT_FORM = () => {
+  let recorder = "";
+  try { recorder = localStorage.getItem("sts_incident_recorder") || ""; } catch (e) {}
+  return { driverId: "", date: localDateStr(), time: localTimeStr(), place: "", type: "", topics: [], damage: "", propertyLevel: "", injuryLevel: "", detail: "", fix: "", recordedBy: recorder, source: "" };
+};
 
 /* ---------- ฝั่งเจ้าหน้าที่/แอดมิน: แท็บ ⚠️ เหตุการณ์ ---------- */
 function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onClear }) {
+  const [mode, setMode] = useState("list"); // list | summary
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_INCIDENT_FORM);
   const [formError, setFormError] = useState("");
   const [fSearch, setFSearch] = useState("");
   const [fLevel, setFLevel] = useState("all");
-  const [fCategory, setFCategory] = useState("all");
+  const [fType, setFType] = useState("all");
 
   const driverOf = (id) => drivers.find((d) => d.id === id);
   const setField = (k, v) => { setForm((f) => ({ ...f, [k]: v })); setFormError(""); };
 
-  const openNew = () => { setForm(EMPTY_INCIDENT_FORM()); setEditingId(null); setFormError(""); setShowForm(true); };
+  const openNew = () => { setForm(EMPTY_INCIDENT_FORM()); setEditingId(null); setFormError(""); setShowForm(true); setMode("list"); };
   const openEdit = (inc) => {
     setForm({
       driverId: inc.driverId || "",
       date: inc.date || localDateStr(),
       time: inc.time || "",
       place: inc.place || "",
-      category: inc.category || "",
-      level: Number(inc.level) || 0,
+      type: inc.type || "",
+      topics: Array.isArray(inc.topics) ? inc.topics : [],
+      damage: inc.damage || "",
+      propertyLevel: inc.propertyLevel || "",
+      injuryLevel: inc.injuryLevel || "",
       detail: inc.detail || "",
-      cause: inc.cause || "",
       fix: inc.fix || "",
-      internalNote: inc.internalNote || "",
+      recordedBy: inc.recordedBy || "",
+      source: inc.source || "",
     });
     setEditingId(inc.id);
     setFormError("");
@@ -225,23 +506,45 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
   };
 
+  // เลือกประเภท: Incident = ไม่มีความเสียหาย / Accident = ต้องเลือกทรัพย์สินหรือบาดเจ็บ
+  const chooseType = (t) => {
+    setForm((f) => ({ ...f, type: t, damage: t === "incident" ? "none" : f.damage === "none" ? "" : f.damage, propertyLevel: t === "incident" ? "" : f.propertyLevel, injuryLevel: t === "incident" ? "" : f.injuryLevel }));
+    setFormError("");
+  };
+  const chooseDamage = (dmg) => setForm((f) => ({ ...f, damage: dmg, propertyLevel: dmg === "property" ? f.propertyLevel : "", injuryLevel: dmg === "injury" ? f.injuryLevel : "" }));
+  const toggleTopic = (k) => setForm((f) => ({ ...f, topics: f.topics.includes(k) ? f.topics.filter((x) => x !== k) : [...f.topics, k] }));
+
+  const selectedDriver = driverOf(form.driverId);
+  const driverHistory = incidents.filter((i) => i.driverId === form.driverId);
+  const calc = calcLevel({ ...form, id: editingId }, driverHistory); // ตัวอย่างระดับแบบสด
+
   const save = () => {
     if (!form.driverId) return setFormError("กรุณาเลือกคนขับ");
     if (!form.date) return setFormError("กรุณาเลือกวันที่");
-    if (!form.category) return setFormError("กรุณาเลือกหมวดเหตุการณ์");
-    if (!INCIDENT_LEVELS[form.level]) return setFormError("กรุณาเลือกระดับดาวร้าว");
+    if (!form.type) return setFormError("ขั้น 1: กรุณาเลือกประเภท Incident / Accident");
+    if (form.topics.length === 0) return setFormError("ขั้น 2: กรุณาเลือกเรื่องที่เกิดอย่างน้อย 1 ข้อ");
+    if (!calc) return setFormError("ขั้น 3: กรุณาเลือกความเสียหายและระดับย่อยให้ครบ");
+    if (!form.source) return setFormError("กรุณาเลือกแหล่งที่มา");
+    if (!form.recordedBy.trim()) return setFormError("กรุณากรอกชื่อผู้บันทึก");
     const data = {
       driverId: form.driverId,
+      plate: selectedDriver ? selectedDriver.plate || "" : "",
       date: form.date,
       time: form.time || "",
       place: form.place.trim(),
-      category: form.category,
-      level: Number(form.level),
+      type: form.type,
+      topics: form.topics,
+      damage: form.damage,
+      propertyLevel: form.damage === "property" ? form.propertyLevel : "",
+      injuryLevel: form.damage === "injury" ? form.injuryLevel : "",
       detail: form.detail.trim(),
-      cause: form.cause.trim(),
       fix: form.fix.trim(),
-      internalNote: form.internalNote.trim(),
+      recordedBy: form.recordedBy.trim(),
+      source: form.source,
+      level: calc.level,          // ระดับถูกคำนวณโดยระบบเสมอ (คำนวณใหม่ทุกครั้งที่บันทึก/แก้ไข)
+      levelReason: calc.reason,
     };
+    try { localStorage.setItem("sts_incident_recorder", data.recordedBy); } catch (e) {}
     if (editingId) onUpdate(editingId, data);
     else onAdd(data);
     setShowForm(false);
@@ -266,10 +569,10 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
   const q = normalizeText(fSearch);
   const shown = sortIncidentsNewestFirst(incidents).filter((inc) => {
     if (fLevel !== "all" && String(inc.level) !== fLevel) return false;
-    if (fCategory !== "all" && inc.category !== fCategory) return false;
+    if (fType !== "all" && inc.type !== fType) return false;
     if (q) {
       const d = driverOf(inc.driverId);
-      const hay = normalizeText(`${d ? d.name : ""}${d ? d.plate : ""}${inc.driverId}`);
+      const hay = normalizeText(`${d ? d.name : ""}${d ? d.plate : ""}${inc.plate || ""}${inc.driverId}`);
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -279,160 +582,245 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
   const inputStyle = { color: "var(--text-primary)" };
   const selectStyle = { background: "var(--input-bg)", color: "var(--text-primary)" };
   const label = (t) => <div className="text-xs text-gray-500 mb-1">{t}</div>;
+  const chip = (selected, disabled) => ({
+    border: selected ? "2px solid #FFC531" : "1px solid var(--surface-border)",
+    background: selected ? "rgba(255,197,49,0.10)" : "var(--input-bg)",
+    color: "var(--text-primary)",
+    opacity: disabled ? 0.4 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  });
 
   return (
     <div className="p-4 space-y-3 sts-fadein">
       <div className="text-xs text-gray-400 leading-relaxed">
-        บันทึกเหตุการณ์ความปลอดภัยของคนขับ <b>แยกจากระบบดาวทั้งหมด</b> — ไม่หักดาว ไม่กระทบคะแนนสะสม แรงค์ หรือการแลกรางวัล
+        บันทึกเหตุการณ์ความปลอดภัยของคนขับ <b>แยกจากระบบดาวทั้งหมด</b> — ไม่หักดาว ไม่กระทบคะแนนสะสม แรงค์ หรือการแลกรางวัล ระดับกระโหลกระบบคำนวณให้อัตโนมัติ
       </div>
 
-      <IncidentLevelSummary incidents={incidents} />
-
-      {!showForm && (
-        <button onClick={openNew} className="sts-btn sts-card-l w-full p-3 flex items-center justify-center gap-2 text-sm" style={{ color: "#FFC531" }}>
-          <Plus size={16} /> บันทึกเหตุการณ์ใหม่
-        </button>
-      )}
-
-      {showForm && (
-        <div className="sts-card-l p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="text-sm sts-display">{editingId ? "แก้ไขเหตุการณ์" : "บันทึกเหตุการณ์ใหม่"}</div>
-            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-gray-500"><XIcon size={16} /></button>
-          </div>
-
-          <div>
-            {label("คนขับ (พิมพ์ชื่อหรือทะเบียน)")}
-            <DriverPickerDark drivers={drivers} selectedId={form.driverId} onSelect={(id) => setField("driverId", id)} />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              {label("วันที่")}
-              <input type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} className={inputCls} style={inputStyle} />
-            </div>
-            <div>
-              {label("เวลา")}
-              <input type="time" value={form.time} onChange={(e) => setField("time", e.target.value)} className={inputCls} style={inputStyle} />
-            </div>
-          </div>
-
-          <div>
-            {label("สถานที่")}
-            <input value={form.place} onChange={(e) => setField("place", e.target.value)} placeholder="เช่น หน้าโรงงานลูกค้า, ลานจอด" className={inputCls} style={inputStyle} />
-          </div>
-
-          <div>
-            {label("หมวดเหตุการณ์")}
-            <select value={form.category} onChange={(e) => setField("category", e.target.value)} className="sts-card-l w-full px-3 py-2 text-sm" style={selectStyle}>
-              <option value="">— เลือกหมวด —</option>
-              {INCIDENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-          <div>
-            {label("ระดับ (ดาวร้าว)")}
-            <div className="grid grid-cols-4 gap-2">
-              {INCIDENT_LEVEL_KEYS.map((lv) => {
-                const selected = form.level === lv;
-                return (
-                  <button
-                    key={lv}
-                    type="button"
-                    onClick={() => setField("level", lv)}
-                    className="sts-btn p-2 rounded-lg flex flex-col items-center"
-                    style={{ border: selected ? "2px solid #FFC531" : "1px solid var(--surface-border)", background: selected ? "rgba(255,197,49,0.08)" : "var(--input-bg)" }}
-                  >
-                    <CrackStar level={lv} size={34} />
-                    <span className="text-[11px] mt-1" style={{ color: "var(--text-primary)" }}>ระดับ {lv}</span>
-                    <span className="text-[10px] text-gray-500">{INCIDENT_LEVELS[lv].name}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            {label("รายละเอียดเหตุการณ์")}
-            <textarea rows={3} value={form.detail} onChange={(e) => setField("detail", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-          </div>
-          <div>
-            {label("สาเหตุ (เฉพาะเจ้าหน้าที่)")}
-            <textarea rows={2} value={form.cause} onChange={(e) => setField("cause", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-          </div>
-          <div>
-            {label("แนวทางแก้ไข (คนขับเห็น)")}
-            <textarea rows={3} value={form.fix} onChange={(e) => setField("fix", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-          </div>
-          <div>
-            {label("🔒 หมายเหตุภายใน (คนขับไม่เห็น)")}
-            <textarea rows={2} value={form.internalNote} onChange={(e) => setField("internalNote", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-          </div>
-
-          {formError && <div className="text-xs" style={{ color: "#FF6B6B" }}>{formError}</div>}
-          <button onClick={save} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
-            {editingId ? "บันทึกการแก้ไข" : "บันทึกเหตุการณ์"}
-          </button>
-        </div>
-      )}
-
-      {/* ตัวกรอง */}
-      <input value={fSearch} onChange={(e) => setFSearch(e.target.value)} placeholder="ค้นหาคนขับ (ชื่อ / ทะเบียน)..." className={inputCls} style={inputStyle} />
-      <div className="grid grid-cols-2 gap-2">
-        <select value={fLevel} onChange={(e) => setFLevel(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
-          <option value="all">ทุกระดับ</option>
-          {INCIDENT_LEVEL_KEYS.map((lv) => <option key={lv} value={String(lv)}>ระดับ {lv} · {INCIDENT_LEVELS[lv].name}</option>)}
-        </select>
-        <select value={fCategory} onChange={(e) => setFCategory(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
-          <option value="all">ทุกหมวด</option>
-          {INCIDENT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+      <div className="flex gap-2">
+        {[{ k: "list", l: "📋 รายการเหตุการณ์" }, { k: "summary", l: "📊 สรุปรายคน" }].map((t) => (
+          <button key={t.k} onClick={() => setMode(t.k)} className="sts-btn flex-1 py-2 rounded-full text-sm" style={{ background: mode === t.k ? "#FFC531" : "var(--surface)", color: mode === t.k ? "#0B0D0F" : "#9CA3AF" }}>{t.l}</button>
+        ))}
       </div>
-      <div className="text-xs text-gray-500">แสดง {shown.length} จาก {incidents.length} รายการ</div>
 
-      {shown.length === 0 && <div className="text-center text-sm text-gray-500 py-8">{incidents.length === 0 ? "ยังไม่มีการบันทึกเหตุการณ์" : "ไม่พบรายการตามที่กรอง"}</div>}
+      {mode === "summary" && <SkullSummaryTable drivers={drivers} incidents={incidents} />}
 
-      <div className="space-y-2">
-        {shown.map((inc) => {
-          const d = driverOf(inc.driverId);
-          const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
-          return (
-            <div key={inc.id} className="sts-card-l p-3">
-              <div className="flex items-start gap-3">
-                <CrackStar level={inc.level} size={38} />
-                <div className="flex-1 min-w-0">
-                  <div className="sts-display text-sm">ระดับ {info.level} · {info.name}</div>
-                  <div className="text-sm">{d ? d.name : inc.driverId} {d && d.plate ? <span className="text-gray-500 text-xs sts-mono">({d.plate})</span> : null}</div>
-                  <div className="text-xs text-gray-500">{inc.category} · {formatIncidentDate(inc.date)}{inc.time ? ` เวลา ${inc.time}` : ""}{inc.place ? ` · 📍 ${inc.place}` : ""}</div>
+      {mode === "list" && (
+        <React.Fragment>
+          <IncidentLevelSummary incidents={incidents} />
+
+          {!showForm && (
+            <button onClick={openNew} className="sts-btn sts-card-l w-full p-3 flex items-center justify-center gap-2 text-sm" style={{ color: "#FFC531" }}>
+              <Plus size={16} /> บันทึกเหตุการณ์ใหม่
+            </button>
+          )}
+
+          {showForm && (
+            <div className="sts-card-l p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm sts-display">{editingId ? "แก้ไขเหตุการณ์" : "บันทึกเหตุการณ์ใหม่"}</div>
+                <button onClick={() => { setShowForm(false); setEditingId(null); }} className="text-gray-500"><XIcon size={16} /></button>
+              </div>
+
+              <div>
+                {label("คนขับ (พิมพ์ชื่อหรือทะเบียน)")}
+                <DriverPickerDark drivers={drivers} selectedId={form.driverId} onSelect={(id) => setField("driverId", id)} />
+                {selectedDriver && <div className="text-xs text-gray-500 mt-1 sts-mono">🚛 ทะเบียนรถ: {selectedDriver.plate || "-"}{selectedDriver.unit ? ` · ${selectedDriver.unit}` : ""}</div>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  {label("วันที่")}
+                  <input type="date" value={form.date} onChange={(e) => setField("date", e.target.value)} className={inputCls} style={inputStyle} />
                 </div>
-                <div className="flex items-center gap-2">
-                  <button onClick={() => openEdit(inc)} className="text-gray-400"><Pencil size={16} /></button>
-                  <button onClick={() => remove(inc)} className="text-gray-400"><Trash2 size={16} /></button>
+                <div>
+                  {label("เวลา")}
+                  <input type="time" value={form.time} onChange={(e) => setField("time", e.target.value)} className={inputCls} style={inputStyle} />
                 </div>
               </div>
-              {(inc.detail || inc.cause || inc.fix || inc.internalNote) && (
-                <div className="mt-2 pt-2 space-y-1 text-xs" style={{ borderTop: "1px dashed var(--surface-border)" }}>
-                  {inc.detail && <div><span className="text-gray-500">รายละเอียด:</span> {inc.detail}</div>}
-                  {inc.cause && <div><span className="text-gray-500">สาเหตุ:</span> {inc.cause}</div>}
-                  {inc.fix && <div><span className="text-gray-500">แนวทางแก้ไข:</span> {inc.fix}</div>}
-                  {inc.internalNote && <div style={{ color: "#E0A400" }}>🔒 ภายใน: {inc.internalNote}</div>}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
 
-      {incidents.length > 0 && (
-        <div className="text-center pt-2">
-          <button onClick={clearAll} className="text-xs" style={{ color: "#FF6B6B" }}>ล้างข้อมูลเหตุการณ์ทั้งหมด</button>
-        </div>
+              <div>
+                {label("สถานที่")}
+                <input value={form.place} onChange={(e) => setField("place", e.target.value)} placeholder="เช่น หน้าโรงงานลูกค้า, ลานจอด" className={inputCls} style={inputStyle} />
+              </div>
+
+              {/* ขั้น 1 */}
+              <div>
+                {label("ขั้น 1 · ประเภท")}
+                <div className="grid grid-cols-2 gap-2">
+                  {Object.values(INCIDENT_TYPES).map((t) => (
+                    <button key={t.key} type="button" onClick={() => chooseType(t.key)} className="sts-btn p-2 rounded-lg text-left" style={chip(form.type === t.key)}>
+                      <div className="sts-display text-sm">{t.label}</div>
+                      <div className="text-[11px] text-gray-500 leading-snug">{t.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {form.type && (
+                <React.Fragment>
+                  {/* ขั้น 2 */}
+                  <div>
+                    {label("ขั้น 2 · เรื่องที่เกิด (เลือกได้หลายข้อ)")}
+                    <div className="space-y-1.5">
+                      {INCIDENT_TOPICS.map((t) => {
+                        const on = form.topics.includes(t.key);
+                        return (
+                          <button key={t.key} type="button" onClick={() => toggleTopic(t.key)} className="sts-btn w-full px-3 py-2 rounded-lg text-left flex items-start gap-2" style={chip(on)}>
+                            <span className="text-sm" style={{ width: 16 }}>{on ? "☑" : "☐"}</span>
+                            <span>
+                              <span className="text-sm">{t.label}</span>
+                              {t.hint && <span className="block text-[11px] text-gray-500">{t.hint}</span>}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-1">ทรัพย์สินเสียหายและบาดเจ็บ ให้เลือกในขั้น 3</div>
+                  </div>
+
+                  {/* ขั้น 3 */}
+                  <div>
+                    {label("ขั้น 3 · ความเสียหาย")}
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { k: "none", l: "ไม่มี", disabled: form.type === "accident" },
+                        { k: "property", l: "ทรัพย์สินเสียหาย", disabled: form.type === "incident" },
+                        { k: "injury", l: "บาดเจ็บ", disabled: form.type === "incident" },
+                      ].map((o) => (
+                        <button key={o.k} type="button" disabled={o.disabled} onClick={() => chooseDamage(o.k)} className="sts-btn px-2 py-2 rounded-lg text-xs" style={chip(form.damage === o.k, o.disabled)}>{o.l}</button>
+                      ))}
+                    </div>
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      {form.type === "incident" ? "Incident คือเหตุการณ์ที่ไม่มีความเสียหาย" : "Accident ต้องมีความเสียหายหรือบาดเจ็บจริง · ถ้ามีทั้งสองอย่างให้เลือก \"บาดเจ็บ\""}
+                    </div>
+
+                    {form.damage === "property" && (
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {PROPERTY_LEVELS.map((p) => (
+                          <button key={p.key} type="button" onClick={() => setField("propertyLevel", p.key)} className="sts-btn px-2 py-2 rounded-lg" style={chip(form.propertyLevel === p.key)}>
+                            <div className="text-sm">{p.label}</div>
+                            <div className="text-[10px] text-gray-500 leading-tight">{p.hint}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {form.damage === "injury" && (
+                      <div className="grid grid-cols-3 gap-2 mt-2">
+                        {INJURY_LEVELS.map((j) => (
+                          <button key={j.key} type="button" onClick={() => setField("injuryLevel", j.key)} className="sts-btn px-2 py-2 rounded-lg text-sm leading-tight" style={chip(form.injuryLevel === j.key)}>{j.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ตัวอย่างกระโหลกที่ระบบกำหนด (สด) */}
+                  <div className="p-3 rounded-lg flex items-center gap-3" style={{ background: "var(--input-bg)", border: "1px dashed var(--surface-border)" }}>
+                    {calc ? <SkullIcon level={calc.level} size={46} /> : <span className="text-2xl" style={{ opacity: 0.4 }}>❔</span>}
+                    <div className="text-sm">
+                      {calc ? (
+                        <React.Fragment>
+                          <div className="sts-display">ระดับ {calc.level} · {INCIDENT_LEVELS[calc.level].name}</div>
+                          <div className="text-xs text-gray-500">ระดับ {calc.level} เพราะ {calc.reason}</div>
+                        </React.Fragment>
+                      ) : (
+                        <div className="text-xs text-gray-500">เลือกให้ครบทั้ง 3 ขั้น ระบบจะกำหนดระดับกระโหลกให้อัตโนมัติ</div>
+                      )}
+                    </div>
+                  </div>
+                </React.Fragment>
+              )}
+
+              <div>
+                {label("รายละเอียด (คนขับเห็นทั้งหมด)")}
+                <textarea rows={3} value={form.detail} onChange={(e) => setField("detail", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+                <div className="text-[11px] mt-1" style={{ color: "#E0A400" }}>⚠️ เขียนกลางๆ และไม่ใส่ชื่อ/เบอร์ลูกค้าหรือบุคคลที่สาม</div>
+              </div>
+              <div>
+                {label("แนวทางแก้ไข")}
+                <textarea rows={3} value={form.fix} onChange={(e) => setField("fix", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  {label("ผู้บันทึก")}
+                  <input value={form.recordedBy} onChange={(e) => setField("recordedBy", e.target.value)} placeholder="ชื่อเจ้าหน้าที่" className={inputCls} style={inputStyle} />
+                </div>
+                <div>
+                  {label("แหล่งที่มา")}
+                  <select value={form.source} onChange={(e) => setField("source", e.target.value)} className="sts-card-l w-full px-3 py-2 text-sm" style={selectStyle}>
+                    <option value="">— เลือก —</option>
+                    {INCIDENT_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {formError && <div className="text-xs" style={{ color: "#FF6B6B" }}>{formError}</div>}
+              <button onClick={save} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
+                {editingId ? "บันทึกการแก้ไข (คำนวณระดับใหม่)" : "บันทึกเหตุการณ์"}
+              </button>
+            </div>
+          )}
+
+          {/* ตัวกรอง */}
+          <input value={fSearch} onChange={(e) => setFSearch(e.target.value)} placeholder="ค้นหาคนขับ (ชื่อ / ทะเบียน)..." className={inputCls} style={inputStyle} />
+          <div className="grid grid-cols-2 gap-2">
+            <select value={fLevel} onChange={(e) => setFLevel(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
+              <option value="all">ทุกระดับ</option>
+              {INCIDENT_LEVEL_KEYS.map((lv) => <option key={lv} value={String(lv)}>ระดับ {lv} · {INCIDENT_LEVELS[lv].name}</option>)}
+            </select>
+            <select value={fType} onChange={(e) => setFType(e.target.value)} className="sts-card-l px-3 py-2 text-sm" style={selectStyle}>
+              <option value="all">ทุกประเภท</option>
+              <option value="incident">Incident</option>
+              <option value="accident">Accident</option>
+            </select>
+          </div>
+          <div className="text-xs text-gray-500">แสดง {shown.length} จาก {incidents.length} รายการ</div>
+
+          {shown.length === 0 && <div className="text-center text-sm text-gray-500 py-8">{incidents.length === 0 ? "ยังไม่มีการบันทึกเหตุการณ์" : "ไม่พบรายการตามที่กรอง"}</div>}
+
+          <div className="space-y-2">
+            {shown.map((inc) => {
+              const d = driverOf(inc.driverId);
+              const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+              const topics = incidentTopicsList(inc);
+              const damage = incidentDamageText(inc);
+              return (
+                <div key={inc.id} className="sts-card-l p-3">
+                  <div className="flex items-start gap-3">
+                    <SkullIcon level={inc.level} size={40} />
+                    <div className="flex-1 min-w-0">
+                      <div className="sts-display text-sm">ระดับ {info.level} · {info.name}{incidentTypeLabel(inc) ? <span className="text-gray-500 text-xs"> · {incidentTypeLabel(inc)}</span> : null}</div>
+                      <div className="text-sm">{d ? d.name : inc.driverId} {(inc.plate || (d && d.plate)) ? <span className="text-gray-500 text-xs sts-mono">({inc.plate || d.plate})</span> : null}</div>
+                      <div className="text-xs text-gray-500">{formatIncidentDate(inc.date)}{inc.time ? ` เวลา ${inc.time}` : ""}{inc.place ? ` · 📍 ${inc.place}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => openEdit(inc)} className="text-gray-400"><Pencil size={16} /></button>
+                      <button onClick={() => remove(inc)} className="text-gray-400"><Trash2 size={16} /></button>
+                    </div>
+                  </div>
+                  <div className="mt-2 pt-2 space-y-1 text-xs" style={{ borderTop: "1px dashed var(--surface-border)" }}>
+                    {(topics.length > 0 || damage) && <div><span className="text-gray-500">เรื่องที่เกิด:</span> {[...topics, damage].filter(Boolean).join(" · ")}</div>}
+                    {inc.levelReason && <div className="text-gray-500">ระดับ {info.level} เพราะ {inc.levelReason}</div>}
+                    {inc.detail && <div style={{ whiteSpace: "pre-wrap" }}><span className="text-gray-500">รายละเอียด:</span> {inc.detail}</div>}
+                    {inc.fix && <div style={{ whiteSpace: "pre-wrap" }}><span className="text-gray-500">แนวทางแก้ไข:</span> {inc.fix}</div>}
+                    {(inc.source || inc.recordedBy) && <div className="text-gray-500">{inc.source ? `แหล่งที่มา: ${inc.source}` : ""}{inc.source && inc.recordedBy ? " · " : ""}{inc.recordedBy ? `ผู้บันทึก: ${inc.recordedBy}` : ""}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {incidents.length > 0 && (
+            <div className="text-center pt-2">
+              <button onClick={clearAll} className="text-xs" style={{ color: "#FF6B6B" }}>ล้างข้อมูลเหตุการณ์ทั้งหมด</button>
+            </div>
+          )}
+        </React.Fragment>
       )}
     </div>
   );
 }
 
-/* ---------- ฝั่งคนขับ: หน้า "เรื่องที่ต้องปรับปรุง" (เปิดดูได้ทันทีเมื่อเข้าสมุดของตัวเอง ไม่ต้องใช้รหัส) ---------- */
+/* ---------- ฝั่งคนขับ: หน้า "เรื่องที่ต้องปรับปรุง" (เปิดดูได้ทันที ไม่ต้องใช้รหัส / เห็นเฉพาะของตัวเอง) ---------- */
 function IncidentsView({ incidents, setView, theme, onToggleTheme }) {
   const mine = sortIncidentsNewestFirst(incidents);
   const days = mine.length > 0 ? daysSinceDate(mine[0].date) : 0;
@@ -440,47 +828,54 @@ function IncidentsView({ incidents, setView, theme, onToggleTheme }) {
   return (
     <div className="pb-24 sts-fadein">
       <TopBarLight title="⚠️ เรื่องที่ต้องปรับปรุง" onBack={() => setView("home")} theme={theme} onToggleTheme={onToggleTheme} />
-      <div className="p-4">
-        <div className="space-y-3">
-          {mine.length === 0 ? (
-            <div className="sts-card-l-raised p-6 text-center">
-              <div className="text-5xl mb-2">🌟</div>
-              <div className="sts-display text-base mb-1">ยอดเยี่ยมมาก!</div>
-              <div className="text-sm text-gray-500 leading-relaxed">ยังไม่มีเรื่องที่ต้องปรับปรุง รักษามาตรฐานการขับขี่ปลอดภัยแบบนี้ต่อไปนะคะ</div>
+      <div className="p-4 space-y-3">
+        <IncidentLevelSummary incidents={mine} size={38} />
+
+        {mine.length === 0 ? (
+          <div className="sts-card-l-raised p-6 text-center">
+            <div className="text-sm sts-display mb-1">ยังไม่มีกระโหลก ขับปลอดภัยต่อไป 🙌</div>
+            <div className="text-xs text-gray-500 leading-relaxed">รักษามาตรฐานการขับขี่ปลอดภัยแบบนี้ต่อไปนะคะ</div>
+          </div>
+        ) : (
+          <React.Fragment>
+            <div className="sts-card-l-raised p-4 text-center">
+              <div className="text-xs text-gray-500 mb-1">ปลอดเหตุการณ์มาแล้ว</div>
+              <div className="sts-mono sts-display" style={{ fontSize: 40, lineHeight: 1, color: "var(--accent)" }}>{days} <span className="text-lg">วัน</span></div>
+              <div className="text-[11px] text-gray-400 mt-1">นับจากเหตุการณ์ล่าสุด</div>
             </div>
-          ) : (
-            <React.Fragment>
-              <div className="sts-card-l-raised p-4 text-center">
-                <div className="text-xs text-gray-500 mb-1">ปลอดเหตุการณ์มาแล้ว</div>
-                <div className="sts-mono sts-display" style={{ fontSize: 40, lineHeight: 1, color: "var(--accent)" }}>{days} <span className="text-lg">วัน</span></div>
-                <div className="text-[11px] text-gray-400 mt-1">นับจากเหตุการณ์ล่าสุด</div>
-              </div>
-              {mine.map((inc) => {
-                const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
-                return (
-                  <div key={inc.id} className="sts-card-l p-4">
-                    <div className="flex items-center gap-3 mb-2">
-                      <CrackStar level={inc.level} size={40} />
-                      <div className="flex-1 min-w-0">
-                        <div className="sts-display text-sm">ระดับ {info.level} · {info.name}</div>
-                        <div className="text-xs text-gray-500">{inc.category}</div>
-                      </div>
-                      <div className="text-xs text-gray-400 sts-mono text-right">{formatIncidentDate(inc.date)}{inc.time ? <div>{inc.time}</div> : null}</div>
+            {mine.map((inc) => {
+              const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
+              const topics = incidentTopicsList(inc);
+              const damage = incidentDamageText(inc);
+              return (
+                <div key={inc.id} className="sts-card-l p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <SkullIcon level={inc.level} size={42} />
+                    <div className="flex-1 min-w-0">
+                      <div className="sts-display text-sm">ระดับ {info.level} · {info.name}</div>
+                      {incidentTypeLabel(inc) && <div className="text-xs text-gray-500">{incidentTypeLabel(inc)}</div>}
                     </div>
-                    {inc.place && <div className="text-xs text-gray-500 mb-1">📍 {inc.place}</div>}
-                    {inc.detail && <div className="text-sm mb-2" style={{ whiteSpace: "pre-wrap" }}>{inc.detail}</div>}
-                    {inc.fix && (
-                      <div className="text-sm p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
-                        <div className="text-xs text-gray-500 mb-1">แนวทางแก้ไข</div>
-                        <div style={{ whiteSpace: "pre-wrap" }}>{inc.fix}</div>
-                      </div>
-                    )}
+                    <div className="text-xs text-gray-400 sts-mono text-right">{formatIncidentDate(inc.date)}{inc.time ? <div>{inc.time}</div> : null}</div>
                   </div>
-                );
-              })}
-            </React.Fragment>
-          )}
-        </div>
+                  {(topics.length > 0 || damage) && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[...topics, damage].filter(Boolean).map((t, i) => (
+                        <span key={i} className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "var(--input-bg)", color: "var(--text-primary)" }}>{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  {inc.detail && <div className="text-sm mb-2" style={{ whiteSpace: "pre-wrap" }}>{inc.detail}</div>}
+                  {inc.fix && (
+                    <div className="text-sm p-3 rounded-lg" style={{ background: "var(--input-bg)" }}>
+                      <div className="text-xs text-gray-500 mb-1">แนวทางแก้ไข</div>
+                      <div style={{ whiteSpace: "pre-wrap" }}>{inc.fix}</div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </React.Fragment>
+        )}
       </div>
     </div>
   );
@@ -2486,27 +2881,8 @@ function SupervisorView({ drivers, logs, leaderboard, incidents, exit, onBack, t
         })}
       </div>
       <div className="px-4 mt-1">
-        <div className="text-xs text-gray-500 mb-2 px-1">⚠️ เหตุการณ์ความปลอดภัย (แยกจากระบบดาว) · ทั้งหมด {(incidents || []).length} รายการ</div>
-        <IncidentLevelSummary incidents={incidents || []} />
-        {(incidents || []).length > 0 && (
-          <div className="space-y-2 mt-3">
-            <div className="text-xs text-gray-500 px-1">เหตุการณ์ล่าสุด</div>
-            {sortIncidentsNewestFirst(incidents || []).slice(0, 5).map((inc) => {
-              const d = drivers.find((x) => x.id === inc.driverId);
-              const info = INCIDENT_LEVELS[inc.level] || INCIDENT_LEVELS[1];
-              return (
-                <div key={inc.id} className="sts-card-l p-3 flex items-start gap-3">
-                  <CrackStar level={inc.level} size={32} />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm">{d ? d.name : inc.driverId} <span className="text-gray-500 text-xs">· ระดับ {info.level} {info.name}</span></div>
-                    <div className="text-xs text-gray-500">{inc.category} · {formatIncidentDate(inc.date)}{inc.place ? ` · 📍 ${inc.place}` : ""}</div>
-                    {inc.detail && <div className="text-xs text-gray-400 mt-0.5">{inc.detail}</div>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <div className="text-xs text-gray-500 mb-2 px-1">⚠️ เหตุการณ์ความปลอดภัย — สรุปกระโหลกรายคน (แยกจากระบบดาว)</div>
+        <SkullSummaryTable drivers={drivers} incidents={incidents || []} />
       </div>
 
       {topDriver && (
