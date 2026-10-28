@@ -113,10 +113,6 @@ const AlertIcon = (p) => <IconBase {...p}>⚠️</IconBase>;
 
    ⚙️ ค่าที่แก้ไขได้ง่าย (อยู่ตรงนี้ที่เดียว) -------------------------------------------- */
 
-// เกณฑ์จำนวนเงินความเสียหายของทรัพย์สิน (บาท): ต่ำกว่า minorMax = เล็กน้อย / ถึง moderateMax = ปานกลาง / มากกว่านั้น = สูง
-// (ใช้เป็นคำอธิบายในฟอร์มให้เจ้าหน้าที่เลือกระดับความเสียหาย ระบบไม่ได้ให้กรอกจำนวนเงิน)
-const PROPERTY_DAMAGE_THRESHOLDS = { minorMax: 5000, moderateMax: 50000 };
-
 // กฎ "เกิดซ้ำภายใน N วัน เพิ่ม 1 ระดับ (ไม่เกินระดับ 4)" — เปลี่ยน enabled เป็น true เพื่อเปิดใช้ (ค่าเริ่มต้น: ปิด)
 const REPEAT_ESCALATION = { enabled: false, withinDays: 90 };
 
@@ -129,11 +125,10 @@ const INCIDENT_LEVELS = {
 };
 const INCIDENT_LEVEL_KEYS = [1, 2, 3, 4];
 
-const fmtBaht = (n) => Number(n).toLocaleString("th-TH");
 const PROPERTY_LEVELS = [
-  { key: "minor", label: "เล็กน้อย", hint: `ต่ำกว่า ${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.minorMax)} บาท` },
-  { key: "moderate", label: "ปานกลาง", hint: `${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.minorMax)}-${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.moderateMax)} บาท` },
-  { key: "high", label: "สูง", hint: `มากกว่า ${fmtBaht(PROPERTY_DAMAGE_THRESHOLDS.moderateMax)} บาท` },
+  { key: "minor", label: "เล็กน้อย" },
+  { key: "moderate", label: "ปานกลาง" },
+  { key: "high", label: "สูง" },
 ];
 const INJURY_LEVELS = [
   { key: "firstaid", label: "ปฐมพยาบาล" },
@@ -368,10 +363,10 @@ function SkullSummaryTable({ drivers, incidents }) {
       head,
       ...body,
     ];
-    const detailHead = ["วันที่", "เวลา", "ชื่อ-สกุล", "ทะเบียนรถ", "ระดับ", "ประเภท", "เรื่องที่เกิด", "ความเสียหาย", "สถานที่", "รายละเอียด", "แนวทางแก้ไข", "แหล่งที่มา", "ผู้บันทึก", "เหตุผลที่ได้ระดับ"];
+    const detailHead = ["วันที่", "เวลา", "ชื่อ-สกุล", "ทะเบียนรถ", "ระดับ", "ประเภท", "เรื่องที่เกิด", "ความเสียหาย", "สถานที่", "รายละเอียด", "แนวทางแก้ไข", "แหล่งที่มา", "เหตุผลที่ได้ระดับ"];
     const detail = sortIncidentsNewestFirst(filtered).map((i) => {
       const d = drivers.find((x) => x.id === i.driverId);
-      return [i.date || "", i.time || "", d ? d.name : i.driverId, i.plate || (d ? d.plate : ""), i.level, incidentTypeLabel(i), incidentTopicsList(i).join(", "), incidentDamageText(i), i.place || "", i.detail || "", i.fix || "", i.source || "", i.recordedBy || "", i.levelReason || ""];
+      return [i.date || "", i.time || "", d ? d.name : i.driverId, i.plate || (d ? d.plate : ""), i.level, incidentTypeLabel(i), incidentTopicsList(i).join(", "), incidentDamageText(i), i.place || "", i.detail || "", i.fix || "", i.source || "", i.levelReason || ""];
     });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), "สรุปรายคน");
@@ -463,11 +458,7 @@ function SkullSummaryTable({ drivers, incidents }) {
   );
 }
 
-const EMPTY_INCIDENT_FORM = () => {
-  let recorder = "";
-  try { recorder = localStorage.getItem("sts_incident_recorder") || ""; } catch (e) {}
-  return { driverId: "", date: localDateStr(), time: localTimeStr(), place: "", type: "", topics: [], damage: "", propertyLevel: "", injuryLevel: "", detail: "", fix: "", recordedBy: recorder, source: "" };
-};
+const EMPTY_INCIDENT_FORM = () => ({ driverId: "", date: localDateStr(), time: localTimeStr(), place: "", type: "", topics: [], damage: "", propertyLevel: "", injuryLevel: "", detail: "", fix: "", source: "" });
 
 /* ---------- ฝั่งเจ้าหน้าที่/แอดมิน: แท็บ ⚠️ เหตุการณ์ ---------- */
 function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onClear }) {
@@ -497,7 +488,6 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
       injuryLevel: inc.injuryLevel || "",
       detail: inc.detail || "",
       fix: inc.fix || "",
-      recordedBy: inc.recordedBy || "",
       source: inc.source || "",
     });
     setEditingId(inc.id);
@@ -516,7 +506,7 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
 
   const selectedDriver = driverOf(form.driverId);
   const driverHistory = incidents.filter((i) => i.driverId === form.driverId);
-  const calc = calcLevel({ ...form, id: editingId }, driverHistory); // ตัวอย่างระดับแบบสด
+  const calc = form.topics.length > 0 ? calcLevel({ ...form, id: editingId }, driverHistory) : null; // ตัวอย่างระดับแบบสด (คำนวณเมื่อเลือกครบทุกขั้น)
 
   const save = () => {
     if (!form.driverId) return setFormError("กรุณาเลือกคนขับ");
@@ -525,7 +515,6 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
     if (form.topics.length === 0) return setFormError("ขั้น 2: กรุณาเลือกเรื่องที่เกิดอย่างน้อย 1 ข้อ");
     if (!calc) return setFormError("ขั้น 3: กรุณาเลือกความเสียหายและระดับย่อยให้ครบ");
     if (!form.source) return setFormError("กรุณาเลือกแหล่งที่มา");
-    if (!form.recordedBy.trim()) return setFormError("กรุณากรอกชื่อผู้บันทึก");
     const data = {
       driverId: form.driverId,
       plate: selectedDriver ? selectedDriver.plate || "" : "",
@@ -539,12 +528,10 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
       injuryLevel: form.damage === "injury" ? form.injuryLevel : "",
       detail: form.detail.trim(),
       fix: form.fix.trim(),
-      recordedBy: form.recordedBy.trim(),
       source: form.source,
       level: calc.level,          // ระดับถูกคำนวณโดยระบบเสมอ (คำนวณใหม่ทุกครั้งที่บันทึก/แก้ไข)
       levelReason: calc.reason,
     };
-    try { localStorage.setItem("sts_incident_recorder", data.recordedBy); } catch (e) {}
     if (editingId) onUpdate(editingId, data);
     else onAdd(data);
     setShowForm(false);
@@ -658,8 +645,8 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
 
               {form.type && (
                 <React.Fragment>
-                  {/* ขั้น 2 */}
-                  <div>
+                  {/* ขั้น 2 (โผล่ต่อจากขั้น 1) */}
+                  <div className="sts-fadein">
                     {label("ขั้น 2 · เรื่องที่เกิด (เลือกได้หลายข้อ)")}
                     <div className="space-y-1.5">
                       {INCIDENT_TOPICS.map((t) => {
@@ -678,8 +665,9 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                     <div className="text-[11px] text-gray-500 mt-1">ทรัพย์สินเสียหายและบาดเจ็บ ให้เลือกในขั้น 3</div>
                   </div>
 
-                  {/* ขั้น 3 */}
-                  <div>
+                  {/* ขั้น 3 (โผล่เมื่อเลือกเรื่องที่เกิดแล้ว) */}
+                  {form.topics.length > 0 && (
+                  <div className="sts-fadein">
                     {label("ขั้น 3 · ความเสียหาย")}
                     <div className="grid grid-cols-3 gap-2">
                       {[
@@ -699,7 +687,6 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                         {PROPERTY_LEVELS.map((p) => (
                           <button key={p.key} type="button" onClick={() => setField("propertyLevel", p.key)} className="sts-btn px-2 py-2 rounded-lg" style={chip(form.propertyLevel === p.key)}>
                             <div className="text-sm">{p.label}</div>
-                            <div className="text-[10px] text-gray-500 leading-tight">{p.hint}</div>
                           </button>
                         ))}
                       </div>
@@ -712,37 +699,31 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                       </div>
                     )}
                   </div>
+                  )}
 
-                  {/* ตัวอย่างกระโหลกที่ระบบกำหนด (สด) */}
-                  <div className="p-3 rounded-lg flex items-center gap-3" style={{ background: "var(--input-bg)", border: "1px dashed var(--surface-border)" }}>
-                    {calc ? <SkullIcon level={calc.level} size={46} /> : <span className="text-2xl" style={{ opacity: 0.4 }}>❔</span>}
+                  {/* ตัวอย่างกระโหลกที่ระบบกำหนด (โผล่เมื่อเลือกครบ) */}
+                  {calc && (
+                  <div className="p-3 rounded-lg flex items-center gap-3 sts-fadein" style={{ background: "var(--input-bg)", border: "1px dashed var(--surface-border)" }}>
+                    <SkullIcon level={calc.level} size={46} />
                     <div className="text-sm">
-                      {calc ? (
-                        <React.Fragment>
-                          <div className="sts-display">ระดับ {calc.level} · {INCIDENT_LEVELS[calc.level].name}</div>
-                          <div className="text-xs text-gray-500">ระดับ {calc.level} เพราะ {calc.reason}</div>
-                        </React.Fragment>
-                      ) : (
-                        <div className="text-xs text-gray-500">เลือกให้ครบทั้ง 3 ขั้น ระบบจะกำหนดระดับกระโหลกให้อัตโนมัติ</div>
-                      )}
+                      <div className="sts-display">ระดับ {calc.level} · {INCIDENT_LEVELS[calc.level].name}</div>
+                      <div className="text-xs text-gray-500">ระดับ {calc.level} เพราะ {calc.reason}</div>
                     </div>
                   </div>
+                  )}
                 </React.Fragment>
               )}
 
-              <div>
-                {label("รายละเอียด (คนขับเห็นทั้งหมด)")}
-                <textarea rows={3} value={form.detail} onChange={(e) => setField("detail", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-                <div className="text-[11px] mt-1" style={{ color: "#E0A400" }}>⚠️ เขียนกลางๆ และไม่ใส่ชื่อ/เบอร์ลูกค้าหรือบุคคลที่สาม</div>
-              </div>
-              <div>
-                {label("แนวทางแก้ไข")}
-                <textarea rows={3} value={form.fix} onChange={(e) => setField("fix", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
+              {calc && (
+                <div className="space-y-3 sts-fadein">
                 <div>
-                  {label("ผู้บันทึก")}
-                  <input value={form.recordedBy} onChange={(e) => setField("recordedBy", e.target.value)} placeholder="ชื่อเจ้าหน้าที่" className={inputCls} style={inputStyle} />
+                  {label("รายละเอียด (คนขับเห็นทั้งหมด)")}
+                  <textarea rows={3} value={form.detail} onChange={(e) => setField("detail", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
+                  <div className="text-[11px] mt-1" style={{ color: "#E0A400" }}>⚠️ เขียนกลางๆ และไม่ใส่ชื่อ/เบอร์ลูกค้าหรือบุคคลที่สาม</div>
+                </div>
+                <div>
+                  {label("แนวทางแก้ไข")}
+                  <textarea rows={3} value={form.fix} onChange={(e) => setField("fix", e.target.value)} className={inputCls} style={{ ...inputStyle, resize: "vertical" }} />
                 </div>
                 <div>
                   {label("แหล่งที่มา")}
@@ -751,7 +732,8 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                     {INCIDENT_SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
-              </div>
+                </div>
+              )}
 
               {formError && <div className="text-xs" style={{ color: "#FF6B6B" }}>{formError}</div>}
               <button onClick={save} className="sts-btn w-full py-2 rounded-lg text-sm sts-display" style={{ background: "#FFC531", color: "#0B0D0F" }}>
@@ -802,7 +784,7 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                     {inc.levelReason && <div className="text-gray-500">ระดับ {info.level} เพราะ {inc.levelReason}</div>}
                     {inc.detail && <div style={{ whiteSpace: "pre-wrap" }}><span className="text-gray-500">รายละเอียด:</span> {inc.detail}</div>}
                     {inc.fix && <div style={{ whiteSpace: "pre-wrap" }}><span className="text-gray-500">แนวทางแก้ไข:</span> {inc.fix}</div>}
-                    {(inc.source || inc.recordedBy) && <div className="text-gray-500">{inc.source ? `แหล่งที่มา: ${inc.source}` : ""}{inc.source && inc.recordedBy ? " · " : ""}{inc.recordedBy ? `ผู้บันทึก: ${inc.recordedBy}` : ""}</div>}
+                    {inc.source && <div className="text-gray-500">แหล่งที่มา: {inc.source}</div>}
                   </div>
                 </div>
               );
@@ -1100,6 +1082,7 @@ const firebaseConfig = {
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
 };
+
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
