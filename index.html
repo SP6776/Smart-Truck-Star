@@ -136,7 +136,7 @@ const INJURY_LEVELS = [
   { key: "severe", label: "สาหัสหรือเสียชีวิต" },
 ];
 const INCIDENT_TYPES = {
-  incident: { key: "incident", label: "Incident", desc: "เหตุการณ์ไม่มีบาดเจ็บ เกือบเกิดหรือผิดระเบียบ" },
+  incident: { key: "incident", label: "Incident", desc: "เหตุการณ์ เกือบเกิดหรือผิดระเบียบ" },
   accident: { key: "accident", label: "Accident", desc: "เกิดความเสียหายหรือบาดเจ็บจริง" },
 };
 const INCIDENT_TOPICS = [
@@ -219,26 +219,29 @@ function filterIncidentsByPeriod(list, period) {
 }
 
 /* ---------- คำนวณระดับกระโหลกอัตโนมัติ (ฟังก์ชันเดียว แก้เกณฑ์ที่นี่) ----------
-   ระดับ 1: Incident ที่ไม่มีความเสียหาย
-   ระดับ 2: Accident ที่ทรัพย์สินเสียหายเล็กน้อย/ปานกลาง หรือบาดเจ็บแค่ปฐมพยาบาล
-   ระดับ 3: Accident ที่ทรัพย์สินเสียหายสูง หรือบาดเจ็บถึงพบแพทย์
+   ระดับคำนวณจาก "ความเสียหาย" (ขั้น 3) ไม่ว่าจะเป็น Incident หรือ Accident ก็เลือกได้ครบทั้ง 3 แบบ:
+   ระดับ 1: ไม่มีความเสียหาย
+   ระดับ 2: ทรัพย์สินเสียหายเล็กน้อย/ปานกลาง หรือบาดเจ็บแค่ปฐมพยาบาล
+   ระดับ 3: ทรัพย์สินเสียหายสูง หรือบาดเจ็บถึงพบแพทย์
    ระดับ 4: บาดเจ็บสาหัสหรือเสียชีวิต
    ถ้าข้อมูลยังไม่ครบ คืนค่า null
    history = รายการเหตุการณ์อื่นๆ ของคนขับคนเดียวกัน (ใช้กับกฎเกิดซ้ำ REPEAT_ESCALATION เมื่อเปิดใช้) */
 function calcLevel(input, history) {
   const { type, damage, propertyLevel, injuryLevel } = input || {};
+  const typeLabel = INCIDENT_TYPES[type] ? INCIDENT_TYPES[type].label : "";
+  if (!typeLabel) return null;
   let level = 0;
   let reason = "";
-  if (type === "incident" && damage === "none") {
-    level = 1; reason = "Incident ไม่มีความเสียหาย";
-  } else if (type === "accident" && damage === "property") {
-    if (propertyLevel === "minor") { level = 2; reason = "Accident ทรัพย์สินเสียหายเล็กน้อย"; }
-    else if (propertyLevel === "moderate") { level = 2; reason = "Accident ทรัพย์สินเสียหายปานกลาง"; }
-    else if (propertyLevel === "high") { level = 3; reason = "Accident ทรัพย์สินเสียหายสูง"; }
-  } else if (type === "accident" && damage === "injury") {
-    if (injuryLevel === "firstaid") { level = 2; reason = "Accident บาดเจ็บแค่ปฐมพยาบาล"; }
-    else if (injuryLevel === "doctor") { level = 3; reason = "Accident บาดเจ็บถึงพบแพทย์"; }
-    else if (injuryLevel === "severe") { level = 4; reason = "บาดเจ็บสาหัสหรือเสียชีวิต"; }
+  if (damage === "none") {
+    level = 1; reason = `${typeLabel} ไม่มีความเสียหาย`;
+  } else if (damage === "property") {
+    if (propertyLevel === "minor") { level = 2; reason = `${typeLabel} ทรัพย์สินเสียหายเล็กน้อย`; }
+    else if (propertyLevel === "moderate") { level = 2; reason = `${typeLabel} ทรัพย์สินเสียหายปานกลาง`; }
+    else if (propertyLevel === "high") { level = 3; reason = `${typeLabel} ทรัพย์สินเสียหายสูง`; }
+  } else if (damage === "injury") {
+    if (injuryLevel === "firstaid") { level = 2; reason = `${typeLabel} บาดเจ็บแค่ปฐมพยาบาล`; }
+    else if (injuryLevel === "doctor") { level = 3; reason = `${typeLabel} บาดเจ็บถึงพบแพทย์`; }
+    else if (injuryLevel === "severe") { level = 4; reason = `${typeLabel} บาดเจ็บสาหัสหรือเสียชีวิต`; }
   }
   if (!level) return null;
 
@@ -496,11 +499,8 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
     try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) {}
   };
 
-  // เลือกประเภท: Incident = ไม่มีความเสียหาย / Accident = ต้องเลือกทรัพย์สินหรือบาดเจ็บ
-  const chooseType = (t) => {
-    setForm((f) => ({ ...f, type: t, damage: t === "incident" ? "none" : f.damage === "none" ? "" : f.damage, propertyLevel: t === "incident" ? "" : f.propertyLevel, injuryLevel: t === "incident" ? "" : f.injuryLevel }));
-    setFormError("");
-  };
+  // เลือกประเภท: Incident / Accident เลือกความเสียหายในขั้น 3 ได้ครบทั้ง 3 แบบเหมือนกัน
+  const chooseType = (t) => { setForm((f) => ({ ...f, type: t })); setFormError(""); };
   const chooseDamage = (dmg) => setForm((f) => ({ ...f, damage: dmg, propertyLevel: dmg === "property" ? f.propertyLevel : "", injuryLevel: dmg === "injury" ? f.injuryLevel : "" }));
   const toggleTopic = (k) => setForm((f) => ({ ...f, topics: f.topics.includes(k) ? f.topics.filter((x) => x !== k) : [...f.topics, k] }));
 
@@ -671,16 +671,14 @@ function IncidentsAdminTab({ drivers, incidents, onAdd, onUpdate, onDelete, onCl
                     {label("ขั้น 3 · ความเสียหาย")}
                     <div className="grid grid-cols-3 gap-2">
                       {[
-                        { k: "none", l: "ไม่มี", disabled: form.type === "accident" },
-                        { k: "property", l: "ทรัพย์สินเสียหาย", disabled: form.type === "incident" },
-                        { k: "injury", l: "บาดเจ็บ", disabled: form.type === "incident" },
+                        { k: "none", l: "ไม่มี" },
+                        { k: "property", l: "ทรัพย์สินเสียหาย" },
+                        { k: "injury", l: "บาดเจ็บ" },
                       ].map((o) => (
-                        <button key={o.k} type="button" disabled={o.disabled} onClick={() => chooseDamage(o.k)} className="sts-btn px-2 py-2 rounded-lg text-xs" style={chip(form.damage === o.k, o.disabled)}>{o.l}</button>
+                        <button key={o.k} type="button" onClick={() => chooseDamage(o.k)} className="sts-btn px-2 py-2 rounded-lg text-xs" style={chip(form.damage === o.k)}>{o.l}</button>
                       ))}
                     </div>
-                    <div className="text-[11px] text-gray-500 mt-1">
-                      {form.type === "incident" ? "Incident คือเหตุการณ์ที่ไม่มีความเสียหาย" : "Accident ต้องมีความเสียหายหรือบาดเจ็บจริง · ถ้ามีทั้งสองอย่างให้เลือก \"บาดเจ็บ\""}
-                    </div>
+                    <div className="text-[11px] text-gray-500 mt-1">ถ้ามีทั้งทรัพย์สินเสียหายและบาดเจ็บ ให้เลือก "บาดเจ็บ"</div>
 
                     {form.damage === "property" && (
                       <div className="grid grid-cols-3 gap-2 mt-2">
@@ -1082,7 +1080,6 @@ const firebaseConfig = {
   messagingSenderId: "582908802766",
   appId: "1:582908802766:web:1678af75fb999f081e429f",
 };
-
 const isFirebaseConfigured = firebaseConfig.apiKey !== "YOUR_API_KEY" && !!firebaseConfig.databaseURL;
 
 let fbApp = null;
